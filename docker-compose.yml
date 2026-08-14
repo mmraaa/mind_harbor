@@ -1,0 +1,30 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: mindharbor-pg
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mindharbor}
+      POSTGRES_USER: ${POSTGRES_USER:-mindharbor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mindharbor}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 如需一键编排,解除注释(需先构建镜像)
+  # backend:
+  #   build: ./backend
+  #   env_file: ./backend/.env
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - postgres
+  # frontend:
+  #   build: ./frontend
+  #   ports:
+  #     - "5173:5173"
+  #   depends_on:
+  #     - backend
+
+volumes:
+  pgdata:
