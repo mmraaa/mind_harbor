@@ -32,13 +32,13 @@ registry.register(
     ToolSpec(
         name="recommend_resources",
         description=(
-            "用户需要心理资源(求助渠道/科普文章/自助练习资料)时调用,"
+            "用户需要心理资源(求助渠道/科普文章/心理游戏/心理书籍)时调用,"
             "按 need 关键词匹配资源库并返回卡片列表。"
         ),
         parameters={
             "type": "object",
             "properties": {
-                "need": {"type": "string", "description": "需求关键词,如 考试压力 / 失眠 / 求助渠道"}
+                "need": {"type": "string", "description": "需求关键词,如 考试压力 / 失眠 / 求助渠道 / 心理资源"}
             },
             "required": [],
         },
