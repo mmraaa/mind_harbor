@@ -26,9 +26,14 @@ TOOL_SYSTEM_PROMPT = (
     "规则:"
     "1. 当用户询问心理常识、校园咨询流程、压力应对、自助练习、求助渠道等知识类问题时,"
     "   **必须调用 search_knowledge 工具检索知识库**,不得跳过、不得凭记忆编造作答;"
-    "2. 用户想记录情绪/做呼吸练习/设置提醒/找资源/查情绪统计/要语音时,调用对应工具;"
-    "3. 调用 search_knowledge 时,query 参数请提炼为简短的核心检索词(如'心理咨询 预约'、'考试焦虑 缓解'),不要传整段口语;"
-    "4. 每次最多调用一个工具;结果会返回给你,请据实使用,不要编造工具没有给出的内容。"
+    "2. 用户提及书籍/文章/游戏/求助渠道等资源需求,或可能受益于心理资源时,"
+    "   **主动调用 recommend_resources** 推荐资源卡片;"
+    "3. 用户感到孤单/难过、希望被安抚,或回复内容适合用声音陪伴时,"
+    "   **调用 speak_voice** 把一段安抚/鼓励的话合成为语音推给前端(可与其他工具组合);"
+    "4. 调用 search_knowledge 时,query 参数请提炼为简短的核心检索词(如'心理咨询 预约'、'考试焦虑 缓解'),不要传整段口语;"
+    "5. **可在一次对话中依次/同时调用多个工具**(例如:先 search_knowledge 获取知识引用,"
+    "   再用 speak_voice 将安抚语生成语音;或 recommend_resources + speak_voice 组合);"
+    "   工具结果会返回给你,请据实使用,不要编造工具没有给出的内容。"
 )
 
 
@@ -86,23 +91,22 @@ def run(
         if not tool_calls:
             break
 
-        call = tool_calls[0]
-        fn = call.get("function") or {}
-        name = fn.get("name") or ""
-        arguments = fn.get("arguments") or "{}"
+        # 支持一轮返回多个 tool_call(如 search_knowledge + speak_voice 组合)
+        for call in tool_calls:
+            fn = call.get("function") or {}
+            name = fn.get("name") or ""
+            arguments = fn.get("arguments") or "{}"
 
-        result = _dispatch(db, user_id, session_id, name, arguments)
-        if "error" in result:
+            result = _dispatch(db, user_id, session_id, name, arguments)
+            call_id = call.get("id") or "0"
             messages.append(
-                {"role": "tool", "tool_call_id": call.get("id") or "0", "content": json.dumps(result, ensure_ascii=False)}
+                {"role": "tool", "tool_call_id": call_id, "content": json.dumps(result, ensure_ascii=False)}
             )
-            continue  # 不把错误结果当成功卡片
+            if "error" in result:
+                continue  # 不把错误结果当成功卡片
 
-        cards.append(result)
-        results.append(json.dumps(result, ensure_ascii=False))
-        messages.append(
-            {"role": "tool", "tool_call_id": call.get("id") or "0", "content": json.dumps(result, ensure_ascii=False)}
-        )
+            cards.append(result)
+            results.append(json.dumps(result, ensure_ascii=False))
 
     tool_context = ""
     if results:

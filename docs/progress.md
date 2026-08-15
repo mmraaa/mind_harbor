@@ -56,6 +56,15 @@
 - **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
 - **commit**:`2cd0311`(接口+记忆)、后续文档提交。
 
+### 2026-08-15 · Agent 工具意愿增强 + 多工具组合
+
+- **TOOL_SYSTEM_PROMPT 更新**:提高 `speak_voice` 与 `recommend_resources` 调用意愿(孤单/难过/资源需求主动调用);规则 5 放开"最多一个工具"→ **允许一次对话依次/同时调用多个工具**(如 search_knowledge + speak_voice、recommend_resources + speak_voice)。
+- **agent.run 支持一轮多 tool_call**:循环内遍历 `tool_calls` 全执行(原只取第一个),消息与 tool_call_id 一一回填。
+- **工具 description 强化**:speak_voice("回复适合朗读安抚时也主动调用")、recommend_resources("提及或可能受益于资源即推荐,并附 URL")。
+- **真机验证**:混合意图("想看点治愈的东西 + 温柔声音安慰")→ Agent 同时产出 `resources` + `voice` 两张卡片,voice 真实合成(非降级)。
+- **测试**:82 passed(新增:一轮多 tool_call 全执行)。
+- 提交:`(待)`
+
 ### 2026-08-15 · CosyVoice TTS 修复
 
 - **问题**:百炼 compatible-mode 不支持 OpenAI 兼容 `/audio/speech`(404);CosyVoice 需 DashScope SDK。

@@ -288,6 +288,34 @@ def test_agent_run_without_tool_calls(db, seed_user, seed_session, monkeypatch):
     assert tool_context == ""
 
 
+def test_agent_run_executes_multiple_tools_in_one_round(db, seed_user, seed_session, monkeypatch):
+    """一轮返回多个 tool_call(如 search_knowledge + speak_voice)→ 全部执行。"""
+
+    calls = []
+
+    def multi_tool(messages, tools, **kw):
+        calls.append(1)
+        if len(calls) == 1:  # 第一轮返回两个 tool_call
+            return (
+                None,
+                [
+                    {"id": "c1", "type": "function", "function": {"name": "generate_breathing", "arguments": "{}"}},
+                    {"id": "c2", "type": "function", "function": {"name": "generate_breathing", "arguments": json.dumps({"exercise": "box"})}},
+                ],
+            )
+        return (None, [])  # 第二轮结束
+
+    monkeypatch.setattr(llm_adapter, "chat_with_tools", multi_tool)
+
+    cards, _ = agent.run(
+        db, seed_user.id, seed_session.id, "帮我放松",
+        system_prompt="你是陪伴助手", context="",
+    )
+    assert len(cards) == 2  # 两个工具都执行
+    assert cards[0]["exercise"] == "478"
+    assert cards[1]["exercise"] == "box"
+
+
 def test_agent_run_max_rounds_guard(db, seed_user, seed_session, monkeypatch):
     """每轮都返回 tool_call:最多 MAX_TOOL_ROUNDS 轮后停止,不无限循环。"""
 
