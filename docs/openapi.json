@@ -143,7 +143,7 @@
           "chat"
         ],
         "summary": "List Sessions",
-        "description": "我的会话列表(倒序,最多 50 条)。",
+        "description": "我的会话列表,按状态分组(倒序,各最多 50 条):\n\n- `active`:进行中(可继续对话);\n- `closed`:已结束(只能浏览历史,不可续聊——后端在 POST /chat 校验)。",
         "operationId": "list_sessions_api_v1_chat_sessions_get",
         "responses": {
           "200": {
@@ -151,11 +151,8 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "additionalProperties": true,
-                    "type": "object"
-                  },
-                  "type": "array",
+                  "additionalProperties": true,
+                  "type": "object",
                   "title": "Response List Sessions Api V1 Chat Sessions Get"
                 }
               }
