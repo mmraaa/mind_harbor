@@ -37,10 +37,13 @@ TOOL_SYSTEM_PROMPT = (
 )
 
 
-def _dispatch(db: Session, user_id: int, session_id: int, name: str, arguments: str) -> dict:
+def _dispatch(
+    db: Session, user_id: int, session_id: int | None, name: str, arguments: str, registry=None
+) -> dict:
     """执行单个工具调用;未知工具/参数解析失败返回错误结果而非崩溃。"""
+    reg = registry or tools_registry.registry
     try:
-        spec = tools_registry.registry.get(name)
+        spec = reg.get(name)
     except KeyError:
         return {"error": f"未知工具: {name}"}
     try:
@@ -59,17 +62,23 @@ def _dispatch(db: Session, user_id: int, session_id: int, name: str, arguments: 
 def run(
     db: Session,
     user_id: int,
-    session_id: int,
+    session_id: int | None,
     user_content: str,
     system_prompt: str,
     context: str,
+    registry=None,
 ) -> tuple[list[dict], str]:
     """工具决策循环(最多 MAX_TOOL_ROUNDS 轮)。
+
+    Args:
+        registry: 工具注册表;缺省用学生端共享 registry,
+            咨询师端可传入独立 registry(见 app.ai.counselor)。
 
     Returns:
         (tool_cards, tool_context):卡片 payload 列表;工具结果文本(可为空串)。
     """
-    tools = tools_registry.registry.openai_tools()
+    reg = registry or tools_registry.registry
+    tools = reg.openai_tools()
     messages: list[dict] = [
         {"role": "system", "content": system_prompt + "\n\n" + TOOL_SYSTEM_PROMPT},
         {"role": "user", "content": f"【对话上下文】\n{context}\n\n【用户本轮消息】\n{user_content}"},
@@ -97,7 +106,7 @@ def run(
             name = fn.get("name") or ""
             arguments = fn.get("arguments") or "{}"
 
-            result = _dispatch(db, user_id, session_id, name, arguments)
+            result = _dispatch(db, user_id, session_id, name, arguments, reg)
             call_id = call.get("id") or "0"
             messages.append(
                 {"role": "tool", "tool_call_id": call_id, "content": json.dumps(result, ensure_ascii=False)}
