@@ -8,10 +8,16 @@
 - M2 RAG 知识库(Advanced RAG)✅ 完成
 - M3 对话主流程 + 情绪日记闭环 ✅ 完成
 - M4 Agent 编排 + 7 工具 ✅ 完成
-- M5 学生端前端 ✅ 完成(分支 `feature/m5-student-frontend`)
-- M6 管理端(admin CRUD)⏳ 未开始
-- M7 咨询师端 ⏳ 未开始
+- M5–M7 前端(学生端/管理端/咨询师端)🔵 **已移交前端团队**(2026-08-15:我方 `frontend/src` 实现已从仓库移除,保留脚手架配置;待团队 push 后合并)
 - M8 集成联调与部署 ⏳ 未开始
+
+## 进行中
+
+### 前端移交(2026-08-15)
+
+- 前端开发全部交由团队成员负责;我方 `frontend/src/`(24 文件)已从仓库彻底移除,保留 `frontend/` 脚手架配置(package.json/vite.config.ts/tsconfig.json/index.html 等)。
+- **接口契约**:以 `docs/api.md`(由 `backend/scripts/gen_api_docs.py` 自动生成)为准,含鉴权/端点/schema;团队基于此开发。
+- 待团队成员 push 其前端实现后合并到 main。
 
 ## 进行中
 
