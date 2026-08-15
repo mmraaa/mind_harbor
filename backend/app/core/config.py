@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     postgres_password: str = "mindharbor"
 
     # 认证
-    jwt_secret: str = "change-me"
+    jwt_secret: str = "dev-change-me-0123456789abcdefghij"
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     embedding_api_key: str = ""
     embedding_base_url: str = ""
     embedding_model: str = ""
+    embedding_dim: int = 1024  # 向量维度,须与所用 embedding 模型一致
 
     # TTS
     tts_api_key: str = ""
