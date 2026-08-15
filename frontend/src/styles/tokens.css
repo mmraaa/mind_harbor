@@ -1,0 +1,99 @@
+/* ============================================================
+   MindHarbor 设计 token —— 「夜航港湾」
+   深海夜 + 灯塔暖光;珊瑚色仅用于危机/风险语义。
+   ============================================================ */
+
+:root {
+  /* 色板 */
+  --night-0: #0b1d2a;      /* 深海夜:主背景 */
+  --night-1: #12293a;      /* 面板 */
+  --night-2: #1b3a4e;      /* 抬升 / 边框 */
+  --night-3: #27485e;      /* hover 态 */
+  --fog: #e8f1f5;          /* 正文 */
+  --fog-dim: #9db4c0;      /* 次级文本 */
+  --fog-faint: #5f7a88;    /* 弱提示 */
+  --lighthouse: #f5b24a;   /* 灯塔暖光:主强调(少量使用) */
+  --lighthouse-soft: #c98f35;
+  --water: #7fb4c9;        /* 水面蓝:次级 / 链接 */
+  --coral: #e06d5a;        /* 珊瑚:危机 / 风险语义色 */
+  --coral-soft: #a04c3f;
+
+  /* 字体 */
+  --font-display: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --font-body: -apple-system, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-journal: "Kaiti SC", "STKaiti", "KaiTi", "FangSong", serif;
+
+  /* 布局 */
+  --radius-s: 6px;
+  --radius-m: 12px;
+  --radius-l: 20px;
+  --nav-w: 224px;
+  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.35);
+
+  /* 动效 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--night-0);
+  color: var(--fog);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--water);
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input,
+textarea {
+  font-family: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--lighthouse);
+  outline-offset: 2px;
+}
+
+/* 呼吸波纹(签名动效):输入区空闲时的缓动同心圆 */
+@keyframes mh-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.55);
+    opacity: 0.12;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

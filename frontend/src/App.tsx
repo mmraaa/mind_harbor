@@ -1,15 +1,37 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import Login from './pages/auth/Login'
+import Register from './pages/auth/Register'
+import StudentLayout from './layouts/StudentLayout'
+import RequireAuth from './router/RequireAuth'
+import Chat from './pages/student/Chat'
+import Journal from './pages/student/Journal'
+import JournalDetail from './pages/student/JournalDetail'
+import FavoritesHistory from './pages/student/FavoritesHistory'
+import Profile from './pages/student/Profile'
 
-/**
- * 三角色前端入口(学生 / 管理 / 咨询师)。
- * 角色路由在 src/router 中细化,此处仅搭骨架。
- */
 export default function App() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/login" replace />} />
-      <Route path="/login" element={<div>登录页(待实现)</div>} />
-      <Route path="*" element={<div>404</div>} />
+      <Route path="/" element={<Navigate to="/student/chat" replace />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route
+        path="/student"
+        element={
+          <RequireAuth>
+            <StudentLayout />
+          </RequireAuth>
+        }
+      >
+        <Route index element={<Navigate to="chat" replace />} />
+        <Route path="chat" element={<Chat />} />
+        <Route path="chat/:sessionId" element={<Chat />} />
+        <Route path="journal" element={<Journal />} />
+        <Route path="journal/:id" element={<JournalDetail />} />
+        <Route path="favorites" element={<FavoritesHistory />} />
+        <Route path="profile" element={<Profile />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/student/chat" replace />} />
     </Routes>
   )
 }

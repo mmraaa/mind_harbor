@@ -1,0 +1,143 @@
+/* 学生端布局:桌面左侧竖导航;移动端底部 tab */
+
+.layout {
+  display: grid;
+  grid-template-columns: var(--nav-w) 1fr;
+  height: 100%;
+}
+
+.layout-side {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 20px 14px;
+  background: var(--night-1);
+  border-right: 1px solid var(--night-2);
+}
+
+.layout-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.layout-brand-name {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--fog);
+}
+
+.layout-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: var(--radius-m);
+  color: var(--fog-dim);
+  font-size: 15px;
+  transition: background 0.2s var(--ease-out), color 0.2s var(--ease-out);
+}
+
+.nav-item:hover {
+  background: var(--night-2);
+  color: var(--fog);
+}
+
+.nav-item.is-active {
+  background: var(--night-2);
+  color: var(--fog);
+  box-shadow: inset 2px 0 0 var(--lighthouse);
+}
+
+.nav-icon {
+  width: 22px;
+  text-align: center;
+}
+
+.layout-side-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-top: 1px solid var(--night-2);
+}
+
+.layout-user {
+  font-size: 14px;
+  color: var(--fog-dim);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layout-logout {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--night-2);
+  border-radius: var(--radius-s);
+  color: var(--fog-dim);
+  font-size: 13px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.layout-logout:hover {
+  color: var(--coral);
+  border-color: var(--coral-soft);
+}
+
+.layout-main {
+  overflow-y: auto;
+  background: var(--night-0);
+}
+
+.layout-tabbar {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .layout-side {
+    display: none;
+  }
+  .layout-main {
+    padding-bottom: 64px; /* 给底部 tab 留空间 */
+  }
+  .layout-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    background: var(--night-1);
+    border-top: 1px solid var(--night-2);
+  }
+  .tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 8px 0 10px;
+    color: var(--fog-dim);
+    font-size: 11px;
+  }
+  .tab-item.is-active {
+    color: var(--lighthouse);
+  }
+  .tab-icon {
+    font-size: 18px;
+  }
+}

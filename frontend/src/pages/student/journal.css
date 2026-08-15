@@ -1,0 +1,143 @@
+/* 日记列表 / 详情(楷体正文,呼应"手写日记") */
+
+.journal-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.page-head {
+  margin-bottom: 20px;
+}
+
+.page-title {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--fog);
+}
+
+.page-sub {
+  margin: 0;
+  font-size: 13px;
+  color: var(--fog-dim);
+}
+
+.page-state {
+  color: var(--fog-dim);
+  padding: 24px 0;
+}
+
+.page-state.is-error {
+  color: #f2a396;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.journal-empty {
+  padding: 48px 0;
+  text-align: center;
+}
+
+.empty-main {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--fog);
+}
+
+.empty-sub {
+  margin: 0;
+  font-size: 14px;
+  color: var(--fog-dim);
+}
+
+.journal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.journal-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: var(--night-1);
+  border: 1px solid var(--night-2);
+  border-radius: var(--radius-m);
+  transition: border-color 0.2s var(--ease-out), background 0.2s var(--ease-out);
+}
+
+.journal-item:hover {
+  border-color: var(--night-3);
+  background: var(--night-2);
+}
+
+.journal-emoji {
+  font-size: 26px;
+}
+
+.journal-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.journal-item-summary {
+  font-family: var(--font-display);
+  font-size: 16px;
+  color: var(--fog);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journal-item-meta {
+  font-size: 12px;
+  color: var(--fog-dim);
+}
+
+.journal-item-score {
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--lighthouse);
+}
+
+.journal-detail {
+  padding: 26px 28px;
+  background: var(--night-1);
+  border: 1px solid var(--night-2);
+  border-radius: var(--radius-l);
+}
+
+.journal-detail-body {
+  margin: 0 0 20px;
+  font-family: var(--font-journal);
+  font-size: 17px;
+  line-height: 2;
+  color: var(--fog);
+  white-space: pre-wrap;
+}
+
+.journal-detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-top: 1px solid var(--night-2);
+  padding-top: 14px;
+}
+
+.meta-chip {
+  padding: 4px 12px;
+  background: var(--night-2);
+  border-radius: 999px;
+  font-size: 13px;
+  color: var(--water);
+}
