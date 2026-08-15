@@ -170,18 +170,29 @@ LLM 情绪识别 + 日记生成(一次调用,结构化输出)
 
 **内容域**:心理常识 / 校园咨询流程 / 常见压力情境 / 自助练习资料。
 
-**离线入库管道**(`scripts/` + `rag/ingest.py`):
+**切片优化 —— 标题层级感知 + 父子分块(Small-to-Big)**(2026-08-15 更新):
 
 ```
-文档 → 解析(md/txt/pdf)→ 语义分块 → Embedding API 向量化 → 向量写 Milvus(collection: knowledge_chunks)
+文档 → 按 markdown 标题树切「节」(父块,不向量化)
+     → 节内子块注入 [文档 > 节] 上下文前缀,Embedding 向量化 → 写 Milvus
+     → 子块 parent_id 关联父块(整节文本存 PostgreSQL)
 ```
 
-**在线检索**(`rag/search.py`):
+- 子块(小)用于向量检索(精确);命中子块后**回查父块**作为 LLM 上下文(完整),避免块内缺失标题语境。
+
+**查询优化 —— RRF 混合检索**(2026-08-15 更新):
 
 ```
-问题 → embedding → Milvus 向量检索 top-k + 可选关键词混合
-     → 重排 → 组装引用上下文 → LLM 生成(带引用)→ 前端"参考来源"卡片
+问题 → 提取关键词(连续 CJK/英文) → ILIKE 精确匹配(子块)
+     → Milvus 向量检索 top-2k
+     → Reciprocal Rank Fusion 融合排序(关键词加权 1.5)
+     → 命中子块 → 回查父块上下文 → LLM 生成(带引用)→ 前端"参考来源"卡片
 ```
+
+- RRF(倒数排名融合)比简单"关键词前置"更稳健:两路结果按排名加权合并,同分时关键词优先。
+- `ChunkHit` 携带 `context`(父块文本),注入对话上下文(`memory.assemble_context` 优先使用)。
+
+**入库工具**:`python scripts/ingest_knowledge.py` 批量入库 `data/knowledge/*.md`(含 `parent_id`/`is_parent` 字段)。
 
 **防幻觉规则**:
 - 检索为空 → 明确回复"资料库暂未收录该话题,建议预约校内咨询",不编造。
@@ -265,7 +276,7 @@ LLM 情绪识别 + 日记生成(一次调用,结构化输出)
 | `reminders` | id, user_id, content, remind_at, done |
 | `user_memories` | id, user_id, memory_type(profile/fact/preference), content, importance, source, created_at, updated_at |
 | `knowledge_docs` | id, title, source, content_type, meta |
-| `knowledge_chunks` | id, doc_id, content, seq(向量存 Milvus collection,按 chunk id 关联) |
+| `knowledge_chunks` | id, doc_id, content, seq, parent_id(自关联), is_parent(父子分块;子块向量存 Milvus collection,按 chunk id 关联) |
 
 ### 5.2 数据关系(简图)
 

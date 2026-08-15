@@ -5,7 +5,7 @@
 ## 当前里程碑
 
 - M1 脚手架 + 数据模型 + JWT ✅ 完成
-- M2 RAG 知识库 ✅ 完成
+- M2 RAG 知识库(Advanced RAG)✅ 完成
 - M3 对话主流程 + 情绪日记闭环 ✅ 完成
 - M4 Agent 编排 + 7 工具 ✅ 完成
 - M5 学生端前端 ✅ 完成(分支 `feature/m5-student-frontend`)
@@ -31,6 +31,14 @@
 - **commits**:`d33a453`(学生 API)、`7f82757`(agent/TTS 修复)、`82754a6`(前端页面)、`dfba3f9`(暖色主题)。
 
 **示例账号**(seed.py 种子):学生端 `student / student123`;咨询师端 `counselor / counselor123`;管理端 `admin / admin123`。
+
+### 2026-08-15 · Advanced RAG 优化(切片 + 查询)
+
+- **切片优化**:`chunking.py` 重写为**标题层级感知 + 父子分块(Small-to-Big)**——按 markdown 标题树切「节」(父块),子块注入 `[文档 > 节]` 上下文前缀进 Milvus,`parent_id` 关联父块;`knowledge_chunks` 表加 `parent_id`/`is_parent` 列。
+- **查询优化**:`search.py` 改 **RRF 混合检索**——向量 top-2k + ILIKE 关键词(自动从 query 提取 CJK/英文词),Reciprocal Rank Fusion 融合(关键词加权 1.5);命中子块回查父块,`ChunkHit` 新增 `context` 字段,`memory.assemble_context` 优先用父块。
+- **入库闭环**:`ingest_knowledge.py` 入库 5 篇官方文档 → 23 子块 + 父块;真实查询验证 4 类问题均语义精准命中(预约/考试焦虑/正念呼吸/联系方式),子块带节前缀、父块上下文完整。
+- **测试**:68 passed(新增:标题感知分块、父块 context、RRF 关键词提升、父子关联入库)。
+- **commit**:`2b3dc96` `feat: advanced RAG (section-aware parent-child chunking, RRF hybrid search), ingest official docs`
 
 ### 2026-08-15 · Task 6 Agent 编排 + 7 工具(M4)
 
