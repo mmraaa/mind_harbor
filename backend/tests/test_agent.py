@@ -206,6 +206,23 @@ def test_speak_voice_tool_returns_base64(db, seed_user, monkeypatch):
     assert result["text"] == "我在这里陪着你"
 
 
+def test_speak_voice_tool_degrades_when_tts_fails(db, seed_user, monkeypatch):
+    """TTS 不可用 → 降级文本卡片,不抛异常、不中断 Agent 循环。"""
+
+    def boom(text, **kw):
+        raise RuntimeError("TTS 404")
+
+    monkeypatch.setattr("app.ai.tools.speak_voice.tts.synthesize", boom)
+
+    handler = tools_registry.registry.get("speak_voice").handler
+    result = handler(db, seed_user.id, 1, text="我在这里陪着你")
+
+    assert result["type"] == "voice"
+    assert result["audio_b64"] is None
+    assert result["degraded"] is True
+    assert result["text"] == "我在这里陪着你"
+
+
 # ---------- agent 循环 ----------
 
 

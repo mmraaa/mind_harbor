@@ -71,6 +71,14 @@ def run(
 
     for _ in range(MAX_TOOL_ROUNDS):
         content, tool_calls = llm_adapter.chat_with_tools(messages, tools)
+        # 先把 LLM 响应消息入列(tool 消息必须以带 tool_calls 的消息为前提)
+        messages.append(
+            {
+                "role": "assistant",
+                "content": content or None,
+                "tool_calls": tool_calls or None,
+            }
+        )
         if not tool_calls:
             break
 
