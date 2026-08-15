@@ -13,11 +13,13 @@
 
 ## 进行中
 
-### 前端移交(2026-08-15)
+(无)
 
-- 前端开发全部交由团队成员负责;我方 `frontend/src/`(24 文件)已从仓库彻底移除,保留 `frontend/` 脚手架配置(package.json/vite.config.ts/tsconfig.json/index.html 等)。
-- **接口契约**:以 `docs/api.md`(由 `backend/scripts/gen_api_docs.py` 自动生成)为准,含鉴权/端点/schema;团队基于此开发。
-- 待团队成员 push 其前端实现后合并到 main。
+### 前端合并完成(2026-08-15)
+
+- 团队成员分支 `feature/frontend-tri-role`(commit `d3fc2f0`)已 fast-forward 合并到 main:三角色前端(学生/管理/咨询师页面 + api/stores/styles,29 文件,5447 行)。
+- 验证:`pnpm build` 通过(288KB);dev server 冒烟(首页 + /login 200);后端接口未变。
+- 前端团队可基于 `docs/api.md` 契约继续迭代。
 
 ## 进行中
 
