@@ -15,6 +15,13 @@
 
 (无)
 
+### 心理资源入库(2026-08-15)
+
+- 子代理搜索真实心理资源并入库 `resources` 表:`backend/scripts/seed_resources.py`(幂等,按 title 去重)。
+- 新增 12 条:**书籍 4**(蛤蟆先生/也许你该找个人聊聊/被讨厌的勇气/正念的奇迹)、**文章 4**(澎湃/壹心理/WHO/央视网)、**游戏 4**(Celeste/GRIS/Spiritfarer/Florence);URL 全部真实可访问(豆瓣/Steam/权威媒体),`is_active=True`。
+- 资源表现在 16 条(含原 4 条占位:危机热线/预约流程/考前压力/478呼吸,type 为英文 `contact/article/practice`)。
+- 注意:新增资源 type 用中文(书籍/文章/游戏),与原占位英文 type 混用;如需统一可后续处理。
+
 ### 前端合并完成(2026-08-15)
 
 - 团队成员分支 `feature/frontend-tri-role`(commit `d3fc2f0`)已 fast-forward 合并到 main:三角色前端(学生/管理/咨询师页面 + api/stores/styles,29 文件,5447 行)。
