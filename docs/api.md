@@ -1,12 +1,13 @@
 # MindHarbor API 文档
 
-> 由后端 OpenAPI(swagger)自动生成 · MindHarbor v0.1.0 · 基址 `http://172.16.2.91:8000/api/v1`(本地 `http://localhost:8000/api/v1`)
+> 由 `scripts/gen_api_docs.py` 从运行中的后端自动生成(共 12 个端点)。
+> 接口基址:`http://172.16.2.91:8000/api/v1`
 
 ## 鉴权
 
-除 `auth/login`、`auth/register` 外,所有接口需在请求头携带:
+除 `auth/login`、`auth/register`、`health` 外,所有请求头需携带:
 
-```
+```http
 Authorization: Bearer <access_token>
 ```
 
@@ -14,141 +15,133 @@ Authorization: Bearer <access_token>
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/v1/auth/login` | Login |
-| GET | `/api/v1/auth/me` | Me |
-| POST | `/api/v1/auth/register` | Register |
-| POST | `/api/v1/chat` | Chat |
-| GET | `/api/v1/chat/sessions` | List Sessions |
-| GET | `/api/v1/chat/sessions/{session_id}/messages` | List Messages |
-| GET | `/api/v1/favorites/mine` | My Favorites |
-| POST | `/api/v1/favorites/{message_id}` | Add Favorite |
-| DELETE | `/api/v1/favorites/{message_id}` | Remove Favorite |
-| GET | `/api/v1/health` | Health |
-| GET | `/api/v1/journals/mine` | My Journals |
-| GET | `/api/v1/journals/mine/{journal_id}` | My Journal Detail |
+| GET | `/api/v1/api/v1/health` | Health |
+| POST | `/api/v1/api/v1/auth/login` | Login |
+| GET | `/api/v1/api/v1/auth/me` | Me |
+| POST | `/api/v1/api/v1/auth/register` | Register |
+| GET | `/api/v1/api/v1/chat/sessions` | List Sessions |
+| GET | `/api/v1/api/v1/chat/sessions/{session_id}/messages` | List Messages |
+| POST | `/api/v1/api/v1/chat/sessions/{session_id}/end` | End Session |
+| POST | `/api/v1/api/v1/chat` | Chat |
+| GET | `/api/v1/api/v1/journals/mine` | My Journals |
+| GET | `/api/v1/api/v1/journals/mine/{journal_id}` | My Journal Detail |
+| POST | `/api/v1/api/v1/favorites/{message_id}` | Add Favorite |
+| DELETE | `/api/v1/api/v1/favorites/{message_id}` | Remove Favorite |
+| GET | `/api/v1/api/v1/favorites/mine` | My Favorites |
 
-## 详细定义
+## GET `/api/v1/api/v1/health`
 
-### POST `/api/v1/auth/login`
+**说明**:Health
 
-**Login**
+**响应**:`Successful Response`
 
-- tags:`auth`
-- **请求体**(`application/json`): `LoginRequest`{username*:string, password*:string}
-- **响应**:
-  - `200` Successful Response → `TokenResponse`{access_token*:string, token_type:string, user*:UserOut}
-  - `422` Validation Error → `HTTPValidationError`{detail:array}
 
-### GET `/api/v1/auth/me`
+## POST `/api/v1/api/v1/auth/login`
 
-**Me**
+**说明**:Login
 
-- tags:`auth`
-- **响应**:
-  - `200` Successful Response → `UserOut`{id*:integer, username*:string, name*:string, role*:string}
+**请求体**:
 
-### POST `/api/v1/auth/register`
+  - `username`* (string)
+  - `password`* (string)
 
-**Register**
+**响应**:`Successful Response`
 
-学生注册(注册即登录);用户名重复返回 409。
+  - `access_token`* (string)
+  - `token_type` (string)
+  - `user`* (object)
 
-- tags:`auth`
-- **请求体**(`application/json`): `RegisterRequest`{username*:string, password*:string, name:string}
-- **响应**:
-  - `200` Successful Response → `TokenResponse`{access_token*:string, token_type:string, user*:UserOut}
-  - `422` Validation Error → `HTTPValidationError`{detail:array}
+## GET `/api/v1/api/v1/auth/me`
 
-### POST `/api/v1/chat`
+**说明**:Me
 
-**Chat**
+**响应**:`Successful Response`
 
-发起一次对话;返回 text / tool_card / journal / error 事件流。
+  - `id`* (integer)
+  - `username`* (string)
+  - `name`* (string)
+  - `role`* (string)
 
-先 strip 校验内容:空白直接产出 error 事件,不创建/触碰会话(避免孤儿会话行)。
+## POST `/api/v1/api/v1/auth/register`
 
-- tags:`chat`
-- **请求体**(`application/json`): `ChatRequest`{session_id:integer / null, content*:string, end_session:boolean}
-- **响应**:
-  - `200` Successful Response → ?
-  - `422` Validation Error → `HTTPValidationError`{detail:array}
+**说明**:Register
 
-### GET `/api/v1/chat/sessions`
+**请求体**:
 
-**List Sessions**
+  - `username`* (string) 用户名 3-32 字符
+  - `password`* (string) 密码至少 6 位
+  - `name` (string) 昵称
 
-我的会话列表(倒序,最多 50 条)。
+**响应**:`Successful Response`
 
-- tags:`chat`
-- **响应**:
-  - `200` Successful Response → array
+  - `access_token`* (string)
+  - `token_type` (string)
+  - `user`* (object)
 
-### GET `/api/v1/chat/sessions/{session_id}/messages`
+## GET `/api/v1/api/v1/chat/sessions`
 
-**List Messages**
+**说明**:List Sessions
 
-会话历史消息(仅本人);非本人 403、不存在 404。
+**响应**:`Successful Response`
 
-- tags:`chat`
-- **路径/查询参数**:
-  - `session_id`(integer,required): 
-- **响应**:
-  - `200` Successful Response → array
-  - `422` Validation Error → `HTTPValidationError`{detail:array}
 
-### GET `/api/v1/favorites/mine`
+## GET `/api/v1/api/v1/chat/sessions/{session_id}/messages`
 
-**My Favorites**
+**说明**:List Messages
 
-- tags:`favorites`
-- **响应**:
-  - `200` Successful Response → array
+**响应**:`Successful Response`
 
-### POST `/api/v1/favorites/{message_id}`
 
-**Add Favorite**
+## POST `/api/v1/api/v1/chat/sessions/{session_id}/end`
 
-- tags:`favorites`
-- **路径/查询参数**:
-  - `message_id`(integer,required): 
-- **响应**:
-  - `200` Successful Response → object
-  - `422` Validation Error → `HTTPValidationError`{detail:array}
+**说明**:End Session
 
-### DELETE `/api/v1/favorites/{message_id}`
+**响应**:`Successful Response`
 
-**Remove Favorite**
 
-- tags:`favorites`
-- **路径/查询参数**:
-  - `message_id`(integer,required): 
-- **响应**:
-  - `200` Successful Response → object
-  - `422` Validation Error → `HTTPValidationError`{detail:array}
+## POST `/api/v1/api/v1/chat`
 
-### GET `/api/v1/health`
+**说明**:Chat
 
-**Health**
+**请求体**:
 
-- tags:`health`
-- **响应**:
-  - `200` Successful Response → object
+  - `session_id` (object) 已有会话 id;缺省创建新会话
+  - `content`* (string) 用户消息内容(空白内容将被拒绝)
+  - `end_session` (boolean) 是否结束会话并生成情绪日记
 
-### GET `/api/v1/journals/mine`
+**响应**:`Successful Response`
 
-**My Journals**
+## GET `/api/v1/api/v1/journals/mine`
 
-- tags:`journals`
-- **响应**:
-  - `200` Successful Response → array
+**说明**:My Journals
 
-### GET `/api/v1/journals/mine/{journal_id}`
+**响应**:`Successful Response`
 
-**My Journal Detail**
 
-- tags:`journals`
-- **路径/查询参数**:
-  - `journal_id`(integer,required): 
-- **响应**:
-  - `200` Successful Response → object
-  - `422` Validation Error → `HTTPValidationError`{detail:array}
+## GET `/api/v1/api/v1/journals/mine/{journal_id}`
+
+**说明**:My Journal Detail
+
+**响应**:`Successful Response`
+
+
+## POST `/api/v1/api/v1/favorites/{message_id}`
+
+**说明**:Add Favorite
+
+**响应**:`Successful Response`
+
+
+## DELETE `/api/v1/api/v1/favorites/{message_id}`
+
+**说明**:Remove Favorite
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/favorites/mine`
+
+**说明**:My Favorites
+
+**响应**:`Successful Response`
+

@@ -32,6 +32,16 @@
 
 **示例账号**(seed.py 种子):学生端 `student / student123`;咨询师端 `counselor / counselor123`;管理端 `admin / admin123`。
 
+### 2026-08-15 · 手动结束会话接口 + 记忆管理完善
+
+- **手动结束会话接口** `POST /api/v1/chat/sessions/{id}/end`:校验归属 → 幂等(已结束返回已有日记)→ `dialogue.finish_session`(情绪日志 Journal+Emotion 原子入库 → 会话 closed → 沉淀长期记忆)→ 返回日记载荷;SSE 流与专用端点共用 `finish_session`,情绪写入唯一路径不变。真机验证:结束→生成日记(`journal_id=3`)→幂等返回同一日记。
+- **记忆管理完善**:
+  - 长期记忆**依据情绪日志**:`_emotion_profile` 从 journals/emotions 聚合主情绪、**情绪趋势**(新旧强度对比)、常驻压力源/支持需求;会话结束 `settle_long_term_memory` 把稳定压力源(≥3 次)沉淀为 UserMemory(profile)。
+  - 短期上下文记忆:**滚动会话摘要**——首次达阈值生成,之后每满阈值用 LLM 增量压缩「旧摘要 + 新增对话」。
+- **测试**:74 passed(新增:手动结束生成日记/幂等/403、情绪画像趋势与压力源、稳定模式沉淀、滚动摘要增量)。
+- **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
+- **commit**:`2cd0311`(接口+记忆)、后续文档提交。
+
 ### 2026-08-15 · Advanced RAG 优化(切片 + 查询)
 
 - **切片优化**:`chunking.py` 重写为**标题层级感知 + 父子分块(Small-to-Big)**——按 markdown 标题树切「节」(父块),子块注入 `[文档 > 节]` 上下文前缀进 Milvus,`parent_id` 关联父块;`knowledge_chunks` 表加 `parent_id`/`is_parent` 列。
