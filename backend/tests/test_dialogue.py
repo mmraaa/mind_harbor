@@ -66,6 +66,8 @@ def patch_ai(monkeypatch):
     monkeypatch.setattr(llm_mod, "complete_json", fake_complete_json)
     monkeypatch.setattr(llm_mod, "stream_chat", fake_stream_chat)
     monkeypatch.setattr(llm_mod, "complete_text", lambda *a, **k: "测试摘要")
+    # Agent 工具循环:默认不调用任何工具(工具测试见 test_agent.py)
+    monkeypatch.setattr(llm_mod, "chat_with_tools", lambda messages, tools, **kw: (None, []))
     monkeypatch.setattr(rag_search_mod, "search", fake_search)
 
 

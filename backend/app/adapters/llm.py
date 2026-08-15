@@ -48,6 +48,12 @@ def _headers(api_key: str) -> dict:
 
 def _chat_completion(payload: dict) -> str:
     """非流式 chat completions 请求,返回首条 message.content(已 strip)。"""
+    message = _chat_completion_message(payload)
+    return (message.get("content") or "").strip()
+
+
+def _chat_completion_message(payload: dict) -> dict:
+    """非流式 chat completions 请求,返回首条完整 message dict(content/tool_calls)。"""
     api_key, base_url, _ = _client_config()
     resp = httpx.post(
         _chat_url(base_url),
@@ -60,7 +66,7 @@ def _chat_completion(payload: dict) -> str:
     choices = data.get("choices") or []
     if not choices:
         raise RuntimeError("LLM 返回为空(no choices)")
-    return (choices[0].get("message") or {}).get("content", "").strip()
+    return choices[0].get("message") or {}
 
 
 def _extract_json(text: str) -> dict | None:
@@ -148,6 +154,29 @@ def stream_chat(
             delta = (choices[0].get("delta") or {}).get("content")
             if delta:
                 yield delta
+
+
+def chat_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    *,
+    temperature: float = 0.2,
+) -> tuple[str, list[dict]]:
+    """非流式 function-calling 调用:LLM 决定是回复文本还是调用工具。
+
+    Returns:
+        (content, tool_calls):content 为回复文本(可能为空串);
+        tool_calls 为工具调用列表(每项含 id/function.name/function.arguments)。
+    """
+    payload: dict = {
+        "model": _client_config()[2],
+        "messages": messages,
+        "tools": tools,
+        "stream": False,
+        "temperature": temperature,
+    }
+    message = _chat_completion_message(payload)
+    return (message.get("content") or "").strip(), message.get("tool_calls") or []
 
 
 def complete_text(

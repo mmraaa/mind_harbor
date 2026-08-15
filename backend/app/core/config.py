@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     # 大模型
     llm_api_key: str = ""
     llm_base_url: str = ""
-    llm_model: str = "deepseek-chat"
+    llm_model: str = "deepseek-v4-flash"
 
     # Milvus(向量库,本机 Docker 已部署,端口 19530)
     milvus_host: str = "localhost"

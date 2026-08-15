@@ -12,7 +12,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.adapters import llm
-from app.ai import emotion, journal, memory
+from app.ai import agent, emotion, journal, memory
 from app.ai.emotion import RISK_REPLY_TEMPLATE
 from app.ai.rag import search as rag_search
 from app.models.emotion import Emotion
@@ -114,6 +114,15 @@ def chat_stream(
     hits = rag_search.search(content, top_k=3, db=db)
     msgs = _load_messages(db, session.id)
     context = memory.assemble_context(session, msgs, user.id, db, rag_hits=hits)
+
+    # 3.5) Agent 工具循环(呼吸/提醒/资源/情绪统计/语音/情绪记录等)
+    tool_cards, tool_context = agent.run(
+        db, user.id, session.id, content, SYSTEM_PROMPT, context
+    )
+    for card in tool_cards:
+        yield _sse("tool_card", card)
+    if tool_context:
+        context = context + "\n\n" + tool_context
 
     # 4) LLM 流式生成 + 增量 text 事件
     prompt = SYSTEM_PROMPT + "\n\n" + context
