@@ -1,0 +1,109 @@
+# AGENTS.md
+
+本文件为仓库内 AI 编码助手(Claude Code / Cursor / Copilot / Gemini 等)提供协作指导,是项目约定的**唯一事实来源**;`CLAUDE.md` 是其软链接(改本文件即同步)。
+
+## 项目概览
+
+MindHarbor — 面向大学生的 AI 心理咨询与情感陪伴助手课程项目。核心链路:**文字聊天 → 情绪识别/风险筛查 → 上下文记忆管理 → 生成回复 → LLM 生成情绪日记(情绪记录一并落库)→ 情绪趋势(咨询师端查看)**。
+
+关键设计文档(先读它们,再改代码):
+- 架构设计:`docs/superpowers/specs/2026-08-14-mindharbor-design.md`
+- 实施计划:`docs/superpowers/plans/2026-08-14-mindharbor-implementation.md`(M1–M8 任务清单)
+
+## 架构要点
+
+**三角色前端 + 单一后端**:
+
+- `frontend/` — React+Vite+TS 单工程,按角色路由拆 `pages/{student,admin,counselor}`;学生端只有 聊天/练习/收藏/历史,无日记与趋势查看。
+- `backend/` — FastAPI 模块化单体,分层:
+  - `core/` 配置/安全/数据库/日志(脚手架已就绪)
+  - `api/` 路由(`chat`、`auth`、`admin/`、`counselor/` 等)
+  - `services/` 业务服务层
+  - `ai/` 对话 `dialogue.py`、情绪 `emotion.py`、日记 `journal.py`、记忆 `memory.py`、Agent `agent.py` + `tools/`(7 工具)+ `rag/`(ingest/search)
+  - `models/` SQLAlchemy、`schemas/` Pydantic、`adapters/` 模型适配层
+- 数据:PostgreSQL + pgvector(`KnowledgeChunk.embedding` 向量检索);`journals`↔`emotions` 由 `journal_id` 关联,情绪记录只在 LLM 生成日记时产出。
+
+**铁律(改动前必读)**:
+- 所有 AI 能力只经 `app/adapters/` 访问模型,禁止直连具体供应商。
+- 情绪类别枚举固定:`[anxious, sad, angry, lonely, tired, calm, hopeful]`。
+- SQL Agent(`query_emotion_stats`)只读连接 + SELECT 白名单 + AST 校验。
+- 学生端不可查看/修改日记与情绪;查看归咨询师端,管理端仅 CRUD。
+
+## 常用命令
+
+```bash
+# 后端(working dir: backend/)
+cp .env.example .env          # 首次:填入 LLM/Embedding/TTS 密钥
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload # http://localhost:8000/api/v1/health
+
+# 数据库
+docker compose up -d postgres # 或本地 pgvector 实例
+python scripts/init_db.py     # 建表
+python scripts/seed.py        # 种子数据(admin/counselor/student + 资源)
+
+# 测试
+pytest backend/tests -v       # 或 cd backend && pytest tests -v
+
+# 前端(working dir: frontend/)
+pnpm install
+pnpm dev                      # http://localhost:5173(vite 代理 /api → :8000)
+pnpm build                    # tsc -b && vite build
+```
+
+## 团队开发协作约定
+
+### 角色与职责
+
+| 角色 | 范围 |
+|---|---|
+| 学生端 | 聊天 / 练习 / 收藏 / 历史页面,SSE 流式渲染 |
+| 管理端(admin) | 咨询师 / 学生 / 资源 CRUD 数据管理 |
+| 咨询师端(counselor) | 学生心理管理(日记/趋势/档案)、会话质检 |
+| 后端 | API、服务层、AI 编排(RAG/Agent/对话/记忆)、数据访问 |
+
+### Git 工作流
+
+- `main` 为稳定分支,保持可运行。
+- 功能分支:`feature/<milestone>-<name>`(如 `feature/m2-rag`);修复分支:`fix/<name>`。
+- 禁止直接推送 `main`;通过 PR 评审合并。
+- 提交粒度:一个 plan Task 一个 commit,不混入无关改动。
+
+### 提交规范(Conventional Commits)
+
+- 前缀:`feat:` 新功能 / `fix:` 修复 / `chore:` 构建与杂项 / `refactor:` 重构 / `docs:` 文档 / `test:` 测试。
+- 示例:`feat: add JWT auth with role-based access`。
+- 遵循 `docs/superpowers/plans/` 中各任务的提交命令。
+
+### 开发流程
+
+1. 改代码前先读本文件与 `docs/superpowers/` 下的 spec / plan。
+2. 大功能流程:brainstorming → 写 spec → writing-plans → 按计划实现。
+3. 后端 M2 起遵循 TDD:先写失败测试 → 最小实现 → 测试通过 → 提交。
+
+### AI 辅助开发约定
+
+- 开始前:先读本文件;探索相关代码与文档,遵循既有模式,不做无关重构。
+- 测试**不得**真实调用 LLM API;用 monkeypatch 替换 `app/adapters/` 的模型调用。
+- 密钥只进环境变量;不得提交 `.env`、密钥或绕过权限校验。
+- 声称完成前必须运行验证命令(pytest / pnpm build)并贴出输出;有证据再下结论。
+- 交付前自查:无占位符、命名与类型一致、与既有接口兼容。
+- 跨模块 / 接口变更,先请求 code review 再合并。
+
+### 代码风格
+
+- 后端:Python 3.12,带类型注解;服务职责单一;FastAPI 依赖注入。
+- 前端:TypeScript 严格模式;页面归 `pages/<role>/`,通用组件归 `components/`。
+- 枚举(情绪类别、角色)集中定义,禁止散落魔数。
+
+### 评审与合并
+
+- 合并前请求评审;评审意见用技术验证后采纳,不盲从也不敷衍。
+- 评审通过、测试/构建全绿才合并到 `main`。
+
+### 文档维护
+
+- spec / plan 在 `docs/superpowers/` 下,随设计演进同步更新。
+- 新增密钥示例同步到 `backend/.env.example`。
+- 新增约定写回本文件,保持唯一事实来源。
