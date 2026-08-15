@@ -96,8 +96,12 @@ def chat_stream(
     db.add(Message(session_id=session.id, role="user", content=content))
     db.flush()
 
-    # 2) 情绪识别 + 风险筛查
-    emo = emotion.analyze(content)
+    # 2) 情绪识别 + 风险筛查(携带多轮上下文:简短回复如"嗯/没事"需结合历史判断)
+    emo = emotion.analyze(
+        content,
+        history=[(m.role, m.content) for m in prev[-6:]],
+        summary=session.summary,
+    )
     if emo.is_risk:
         session.risk_level = "high"
         db.add(
