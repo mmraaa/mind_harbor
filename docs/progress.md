@@ -8,13 +8,26 @@
 - M2 RAG 知识库 ✅ 完成
 - M3 对话主流程 + 情绪日记闭环 ✅ 完成
 - M4 Agent 编排 + 7 工具 ✅ 完成
-- M5–M8 前端与集成 ⏳ 未开始
+- M5 学生端前端 ✅ 完成(分支 `feature/m5-student-frontend`)
+- M6 管理端(admin CRUD)⏳ 未开始
+- M7 咨询师端 ⏳ 未开始
+- M8 集成联调与部署 ⏳ 未开始
 
 ## 进行中
 
 (无)
 
 ## 已完成
+
+### 2026-08-15 · Task 7 学生端前端(分支 feature/m5-student-frontend)
+
+- **设计「夜航港湾」**:深海夜 `#0B1D2A` + 灯塔暖光 `#F5B24A` + 珊瑚危机语义色;标题思源宋体/日记楷体;签名动效"呼吸波纹"(输入区同心圆,尊重 reduced-motion);灯塔 SVG 标识。
+- **页面闭环**:登录/注册(注册即登录)→ 学生端导航(桌面侧栏/移动底部 tab)→ 聊天页(SSE 逐 token + 工具卡片:呼吸/来源/危机/日记/语音等 + 结束并生成日记)→ 情绪日记(列表 + 楷体详情)→ 收藏与历史(双 tab)→ 用户主页(退出)。
+- **后端配套 API**(TDD,65→66 测试):`/auth/register`、`/chat/sessions`(+messages)、`/journals/mine`(+详情)、`/favorites` 增删查。
+- **真机联调发现并修复 2 个真实 API bug**:① agent 循环漏 append 带 tool_calls 的 assistant 消息(DeepSeek 400);② 阿里云百炼 TTS 无 OpenAI 兼容 /audio/speech → 降级文字卡片(待单独适配 CosyVoice 异步 API)。
+- **验证**:后端 66 tests 全绿;`pnpm build` 通过(167 模块);真实 LLM 全链路:Agent 工具调用(voice 降级卡片)→ 流式 text → RAG sources → journal 落库。
+- **铁律变更**:学生可只读查看自己的日记(AGENTS.md 已同步)。
+- **commits**:`d33a453`(学生 API)、`7f82757`(agent/TTS 修复)、`82754a6`(前端页面)。
 
 ### 2026-08-15 · Task 6 Agent 编排 + 7 工具(M4)
 
@@ -82,5 +95,6 @@
 
 ## 遗留问题(TODO)
 
+- **TTS 供应商适配**:阿里云百炼 CosyVoice 是异步任务 API,当前 `speak_voice` 降级为文字卡片;待单独实现 DashScope 语音合成适配。
 - SDD ledger 中 Task 4/5 的 deferred Minor 清单(见 `.superpowers/sdd/2026-08-14-mindharbor-implementation/progress.md`)。
 - 危机热线为示例号码,演示前替换为当地真实热线。

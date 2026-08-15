@@ -27,7 +27,7 @@ MindHarbor — 面向大学生的 AI 心理咨询与情感陪伴助手课程项�
 - 所有 AI 能力只经 `app/adapters/` 访问模型,禁止直连具体供应商。
 - 情绪类别枚举固定:`[anxious, sad, angry, lonely, tired, calm, hopeful]`。
 - SQL Agent(`query_emotion_stats`)只读连接 + SELECT 白名单 + AST 校验。
-- 学生端不可查看/修改日记与情绪;查看归咨询师端,管理端仅 CRUD。
+- 学生端:日记**只读**查看自己的(2026-08-15 更新,`GET /journals/mine`);不可修改;咨询师端可查看所有学生,管理端仅 CRUD。情绪趋势仅咨询师端。
 
 ## 常用命令
 
