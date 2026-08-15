@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from app.adapters import llm
 from app.ai import agent, emotion, journal, memory
 from app.ai.emotion import RISK_REPLY_TEMPLATE
-from app.ai.rag import search as rag_search
 from app.models.emotion import Emotion, Journal
 from app.models.session import ChatSession, Message
 from app.models.user import User
@@ -119,10 +118,10 @@ def chat_stream(
             yield from _finish_session(db, user, session)
         return
 
-    # 3) RAG 检索 + 记忆拼装
-    hits = rag_search.search(content, top_k=3, db=db)
+    # 3) 记忆拼装(RAG 检索交由 Agent 按需调用 search_knowledge 工具,见 step 3.5;
+    #    不再每轮自动检索,避免与工具重复、节省 embedding 调用)
     msgs = _load_messages(db, session.id)
-    context = memory.assemble_context(session, msgs, user.id, db, rag_hits=hits)
+    context = memory.assemble_context(session, msgs, user.id, db)
 
     # 3.5) Agent 工具循环(呼吸/提醒/资源/情绪统计/语音/情绪记录等)
     tool_cards, tool_context = agent.run(
@@ -132,6 +131,7 @@ def chat_stream(
         yield _sse("tool_card", card)
     if tool_context:
         context = context + "\n\n" + tool_context
+    tool_cards = tool_cards or None  # 供第 6 步持久化到 Message
 
     # 4) LLM 流式生成 + 增量 text 事件
     prompt = SYSTEM_PROMPT + "\n\n" + context
@@ -143,22 +143,14 @@ def chat_stream(
         yield _sse("text", {"content": delta})
     reply = "".join(chunks).strip()
 
-    # 5) 工具卡片(知识引用来源)
-    tool_cards = None
-    if hits:
-        tool_cards = [
-            {"type": "sources", "sources": [{"title": h.doc_title, "text": h.text[:200]} for h in hits]}
-        ]
-        yield _sse("tool_card", tool_cards[0])
-
-    # 6) 助手消息落库 + 记忆更新
+    # 6) 助手消息落库 + 记忆更新(工具卡片随消息持久化,历史回放可见)
     db.add(
         Message(
             session_id=session.id,
             role="assistant",
             content=reply,
             emotion_tags=[emo.category],
-            tool_cards=tool_cards,
+            tool_cards=tool_cards or None,
         )
     )
     memory.update(session, _load_messages(db, session.id), user.id, db)

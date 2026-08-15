@@ -160,7 +160,7 @@ def chat_with_tools(
     messages: list[dict],
     tools: list[dict],
     *,
-    temperature: float = 0.2,
+    temperature: float = 0.1,
 ) -> tuple[str, list[dict]]:
     """非流式 function-calling 调用:LLM 决定是回复文本还是调用工具。
 

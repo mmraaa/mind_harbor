@@ -56,6 +56,17 @@
 - **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
 - **commit**:`2cd0311`(接口+记忆)、后续文档提交。
 
+### 2026-08-15 · RAG 收敛为 Agentic(按需检索)
+
+- **问题**:dialogue 每轮自动 RAG 与 `search_knowledge` 工具重复(同一轮可能检索两次)。
+- **收敛**:移除 dialogue 自动 RAG,**检索唯一入口 = Agent 的 `search_knowledge` 工具**(LLM function-calling 按需调用);工具卡片随助手消息持久化(`tool_cards`)。
+- **提高工具倾向**:TOOL_SYSTEM_PROMPT 强指示"知识类问题必须调用 search_knowledge";工具决策 temperature 0.2→0.1。
+- **查询词精炼**:`_refine_query` 去问句语气词/停用词(请问/我想/怎么办等),提取核心检索词再走 RRF 混合检索。
+- **真机验证**:知识类问题("学校心理咨询中心怎么预约")→ Agent 自动调用工具 → knowledge 卡片(命中 3 条来源);普通对话零检索。
+- **测试**:81 passed(新增:工具查询精炼断言、refine 函数;调整 dialogue 无自动 RAG 断言)。
+- **前端契约变化**:`tool_card` 来源卡片类型由 `sources` 改为 `knowledge`(含 hits),且仅在 Agent 检索时出现——需同步前端团队。
+- 提交:`(待)`
+
 ### 2026-08-15 · 历史会话接口变更:按状态分组 + 已结束不可续聊
 
 - `GET /chat/sessions` 返回分组 `{active: [...], closed: [...]}`(进行中 / 已结束各 ≤50 条)。

@@ -92,13 +92,30 @@ def test_record_emotion_tool_writes_journal_and_emotion(db, seed_user, seed_sess
 
 def test_search_knowledge_tool_returns_hits(monkeypatch, db, seed_user):
     hits = [ChunkHit(text="考前压力应对:规律作息……", doc_title="考前压力应对", chunk_id=1, score=0.9)]
-    monkeypatch.setattr("app.ai.tools.search_knowledge.rag_search.search", lambda *a, **kw: hits)
+    captured = {}
+
+    def fake_search(query, **kw):
+        captured["query"] = query
+        return hits
+
+    monkeypatch.setattr("app.ai.tools.search_knowledge.rag_search.search", fake_search)
 
     handler = tools_registry.registry.get("search_knowledge").handler
-    result = handler(db, seed_user.id, 1, query="考试压力怎么办")
+    result = handler(db, seed_user.id, 1, query="我想知道考试压力怎么办")
 
     assert result["count"] == 1
     assert result["hits"][0]["title"] == "考前压力应对"
+    # 查询词已精炼:去掉"我想知道/怎么办"等语气词,保留核心检索词
+    assert "我想知道" not in captured["query"]
+    assert "考试压力" in captured["query"]
+
+
+def test_refine_query_extracts_core_terms():
+    from app.ai.tools.search_knowledge import _refine_query
+
+    assert "心理咨询中心" in _refine_query("我想去学校心理咨询中心,请问怎么预约?")
+    assert "请问" not in _refine_query("请问考试焦虑怎么缓解")
+    assert _refine_query("") == ""
 
 
 def test_generate_breathing_tool(db, seed_user):

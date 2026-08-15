@@ -91,8 +91,8 @@ def test_chat_creates_session_streams_reply_and_persists(client, seed_user, patc
 
     events = _parse_sse(r.text)
     assert [e["payload"]["content"] for e in events if e["type"] == "text"] == ["我", "理解", "你的焦虑"]
-    sources = [e for e in events if e["type"] == "tool_card"]
-    assert sources and sources[0]["payload"]["type"] == "sources"
+    # RAG 已交由 Agent 按需检索:普通对话(agent 未调用检索工具)不产生 tool_card
+    assert [e for e in events if e["type"] == "tool_card"] == []
 
     session = db.query(ChatSession).one()
     assert session.user_id == seed_user.id
@@ -104,7 +104,7 @@ def test_chat_creates_session_streams_reply_and_persists(client, seed_user, patc
     assert msgs[0].content == "最近考试压力好大"
     # 情绪识别结果作为 emotion_tags 挂在助手消息上
     assert msgs[1].emotion_tags == ["anxious"]
-    assert msgs[1].tool_cards and msgs[1].tool_cards[0]["type"] == "sources"
+    assert msgs[1].tool_cards is None  # agent 未检索 → 无工具卡片
 
 
 def test_chat_reuses_existing_session(client, seed_user, patch_ai, db):
