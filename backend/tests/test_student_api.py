@@ -145,6 +145,89 @@ def test_journal_detail_own_and_forbidden(client, seed_user, db):
 # ---------- 收藏 ----------
 
 
+def test_manual_end_session_generates_journal_and_closes(client, seed_user, db, monkeypatch):
+    """手动结束会话接口:生成情绪日志(Journal+Emotion 入库)→ 会话 closed → 返回日记。"""
+    from app.adapters import llm as llm_mod
+
+    def fake_complete_json(system, user, **kw):
+        return {
+            "journal_summary": "结束测试",
+            "journal_content": "今天聊了考试,结束了这次会话。",
+            "mood_score": 6,
+            "emotion": {"category": "calm", "intensity": 5, "stress_source": "", "support_need": ""},
+        }
+
+    monkeypatch.setattr(llm_mod, "complete_json", fake_complete_json)
+
+    s = ChatSession(user_id=seed_user.id, title="待结束")
+    db.add(s)
+    db.flush()
+    db.add(Message(session_id=s.id, role="user", content="我们聊完了"))
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
+    r = client.post(f"/api/v1/chat/sessions/{s.id}/end", headers={"Authorization": f"Bearer {token}"})
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["journal_id"]
+    assert data["emotion"]["category"] == "calm"
+
+    from app.models.emotion import Emotion, Journal
+
+    j = db.query(Journal).filter_by(session_id=s.id).one()
+    emo = db.query(Emotion).filter_by(journal_id=j.id).one()
+    assert emo.user_id == seed_user.id
+    db.expire_all()  # API 用独立 session 提交,刷新缓存再断言
+    assert db.get(ChatSession, s.id).status == "closed"  # 会话已结束
+
+
+def test_manual_end_session_idempotent(client, seed_user, db, monkeypatch):
+    """幂等:已结束会话重复调用 → 返回同一日记,不重复生成。"""
+    from app.adapters import llm as llm_mod
+
+    calls = []
+
+    def fake_complete_json(system, user, **kw):
+        calls.append(1)
+        return {
+            "journal_summary": "一次",
+            "journal_content": "内容",
+            "mood_score": 5,
+            "emotion": {"category": "calm", "intensity": 4, "stress_source": "", "support_need": ""},
+        }
+
+    monkeypatch.setattr(llm_mod, "complete_json", fake_complete_json)
+
+    s = ChatSession(user_id=seed_user.id, title="幂等")
+    db.add(s)
+    db.flush()
+    db.add(Message(session_id=s.id, role="user", content="hi"))
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
+    h = {"Authorization": f"Bearer {token}"}
+    first = client.post(f"/api/v1/chat/sessions/{s.id}/end", headers=h).json()
+    second = client.post(f"/api/v1/chat/sessions/{s.id}/end", headers=h).json()
+
+    assert first["journal_id"] == second["journal_id"]
+    assert len(calls) == 1  # 只生成一次
+
+
+def test_manual_end_session_forbidden_for_others(client, seed_user, db):
+    """他人会话结束 → 403。"""
+    other = User(role="student", username="end2", name="他人", password_hash="x")
+    db.add(other)
+    db.flush()
+    s = ChatSession(user_id=other.id, title="他人的")
+    db.add(s)
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
+    r = client.post(f"/api/v1/chat/sessions/{s.id}/end", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403
+
+
 def test_favorite_flow(client, seed_user, db):
     s = ChatSession(user_id=seed_user.id, title="会话")
     db.add(s)

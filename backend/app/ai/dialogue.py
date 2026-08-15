@@ -15,7 +15,7 @@ from app.adapters import llm
 from app.ai import agent, emotion, journal, memory
 from app.ai.emotion import RISK_REPLY_TEMPLATE
 from app.ai.rag import search as rag_search
-from app.models.emotion import Emotion
+from app.models.emotion import Emotion, Journal
 from app.models.session import ChatSession, Message
 from app.models.user import User
 from app.schemas.chat import ChatRequest
@@ -160,17 +160,8 @@ def chat_stream(
         yield from _finish_session(db, user, session)
 
 
-def _finish_session(db: Session, user: User, session: ChatSession) -> Iterator[dict]:
-    """会话收尾:LLM 生成情绪日记(Journal+Emotion 原子落库)并输出 journal 卡片事件。"""
-    try:
-        j = journal.generate(session.id, db, user.id)
-    except Exception:  # noqa: BLE001  LLM 失败不应中断整个流;详情进日志,前端只收通用文案
-        logger.exception("日记生成失败(session_id=%s, user_id=%s)", session.id, user.id)
-        yield _sse("error", {"message": GENERIC_ERROR_MSG})
-        return
-    session.status = "closed"
-    db.commit()
-
+def journal_payload(db: Session, j: Journal) -> dict:
+    """把 Journal(含关联 Emotion)序列化为事件/接口统一载荷。"""
     emo = db.query(Emotion).filter_by(journal_id=j.id).first()
     payload: dict = {
         "journal_id": j.id,
@@ -185,4 +176,28 @@ def _finish_session(db: Session, user: User, session: ChatSession) -> Iterator[d
             "stress_source": emo.stress_source,
             "support_need": emo.support_need,
         }
+    return payload
+
+
+def finish_session(db: Session, user: User, session: ChatSession) -> dict:
+    """结束会话(手动结束 / SSE end_session 共用):
+
+    情绪日志生成(Journal+Emotion 原子落库,唯一情绪写入路径)→ 标记 closed →
+    依据情绪日志沉淀长期记忆。返回统一日记载荷(JSON)。
+    """
+    j = journal.generate(session.id, db, user.id)
+    session.status = "closed"
+    memory.settle_long_term_memory(db, user.id)
+    db.commit()
+    return journal_payload(db, j)
+
+
+def _finish_session(db: Session, user: User, session: ChatSession) -> Iterator[dict]:
+    """SSE 流内收尾:复用 `finish_session`,输出 journal 卡片事件。"""
+    try:
+        payload = finish_session(db, user, session)
+    except Exception:  # noqa: BLE001  LLM 失败不应中断整个流;详情进日志,前端只收通用文案
+        logger.exception("日记生成失败(session_id=%s, user_id=%s)", session.id, user.id)
+        yield _sse("error", {"message": GENERIC_ERROR_MSG})
+        return
     yield _sse("journal", payload)

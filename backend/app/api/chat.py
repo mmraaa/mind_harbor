@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.ai import dialogue
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.models.emotion import Journal
 from app.models.session import ChatSession, Message
 from app.models.user import User
 from app.schemas.chat import ChatRequest
@@ -84,6 +85,34 @@ def list_messages(
         }
         for m in rows
     ]
+
+
+@router.post("/sessions/{session_id}/end")
+def end_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """手动结束会话:生成情绪日志(Journal+Emotion 原子入库)→ 标记 closed → 返回日记载荷。
+
+    幂等:会话已有日记时直接返回该日记,不重复生成。
+    """
+    session = db.get(ChatSession, session_id)
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
+    if session.user_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权操作该会话")
+
+    existing = (
+        db.query(Journal)
+        .filter_by(session_id=session_id, user_id=user.id)
+        .order_by(Journal.id.desc())
+        .first()
+    )
+    if existing is not None:
+        return dialogue.journal_payload(db, existing)
+
+    return dialogue.finish_session(db, user, session)
 
 
 @router.post("")
