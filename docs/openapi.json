@@ -520,6 +520,51 @@
           }
         ]
       }
+    },
+    "/api/v1/counselor/chat": {
+      "post": {
+        "tags": [
+          "counselor"
+        ],
+        "summary": "Counselor Chat",
+        "description": "咨询师自然语言查询学生情绪/日记/统计;返回 text / tool_card / error 事件流。",
+        "operationId": "counselor_chat_api_v1_counselor_chat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {

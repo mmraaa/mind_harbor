@@ -56,6 +56,19 @@
 - **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
 - **commit**:`2cd0311`(接口+记忆)、后续文档提交。
 
+### 2026-08-15 · 咨询师端对话 Agent
+
+- **独立工具集** `app/ai/counselor.py` + `counselor_tools.py`(counselor_registry,不污染学生端):
+  - `query_student_stats`:SQL Agent(自然语言→只读 SQL→表格 headers/rows+解释),查任意学生/全体;白名单含 `users`;
+  - `search_student_journals`:按学生姓名/用户名查情绪日记;
+  - `find_at_risk_students`:识别情绪异常学生(近 N 天高强度负面情绪 / 高风险会话)。
+- **接口** `POST /api/v1/counselor/chat`(SSE,`require_roles("counselor","admin")`):复用 `agent.run`(新增 `registry` 参数支持独立工具集);返回 `stats_table`(表格)/`at_risk_students`/`student_journals` 卡片 + 流式总结。
+- **SQL 增强**:SQL_GEN_PROMPT 注入**表结构 hint**(防 LLM 臆造列名,如 `emotion_type`);SQL 结果 Decimal→float、日期→ISO(JSON 可序列化)。
+- **真机验证**:counselor 登录 → "统计情绪分布" → Agent 调用 stats_table(表格)+ at_risk_students,流式专业总结;学生访问 403。
+- **测试**:91 passed(新增 9:注册表 3 工具、SQL 表格/非法拒绝、异常识别、日记检索、接口权限 403、接口可用)。
+- **契约/规约更新**:`docs/api.md` 重新生成(13 paths,含 counselor/chat);`AGENTS.md` 架构/职责/SQL 铁律补充咨询师端 Agent。
+- 提交:`52973dc`。
+
 ### 2026-08-15 · Agent 工具意愿增强 + 多工具组合
 
 - **TOOL_SYSTEM_PROMPT 更新**:提高 `speak_voice` 与 `recommend_resources` 调用意愿(孤单/难过/资源需求主动调用);规则 5 放开"最多一个工具"→ **允许一次对话依次/同时调用多个工具**(如 search_knowledge + speak_voice、recommend_resources + speak_voice)。

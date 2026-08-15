@@ -1,6 +1,6 @@
 # MindHarbor API 文档
 
-> 由 `scripts/gen_api_docs.py` 从运行中的后端自动生成(共 12 个端点)。
+> 由 `scripts/gen_api_docs.py` 从运行中的后端自动生成(共 13 个端点)。
 > 接口基址:`http://172.16.2.91:8000/api/v1`
 
 ## 鉴权
@@ -28,6 +28,7 @@ Authorization: Bearer <access_token>
 | POST | `/api/v1/api/v1/favorites/{message_id}` | Add Favorite |
 | DELETE | `/api/v1/api/v1/favorites/{message_id}` | Remove Favorite |
 | GET | `/api/v1/api/v1/favorites/mine` | My Favorites |
+| POST | `/api/v1/api/v1/counselor/chat` | Counselor Chat |
 
 ## GET `/api/v1/api/v1/health`
 
@@ -145,3 +146,15 @@ Authorization: Bearer <access_token>
 
 **响应**:`Successful Response`
 
+
+## POST `/api/v1/api/v1/counselor/chat`
+
+**说明**:Counselor Chat
+
+**请求体**:
+
+  - `session_id` (object) 已有会话 id;缺省创建新会话
+  - `content`* (string) 用户消息内容(空白内容将被拒绝)
+  - `end_session` (boolean) 是否结束会话并生成情绪日记
+
+**响应**:`Successful Response`
