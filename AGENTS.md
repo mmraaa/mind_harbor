@@ -36,7 +36,7 @@ MindHarbor — 面向大学生的 AI 心理咨询与情感陪伴助手课程项�
 cp .env.example .env          # 首次:填入 LLM/Embedding/TTS 密钥
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 # 团队可访问:http://<本机IP>:8000/api/v1/health
+uvicorn app.main:app --reload --host 0.0.0.0 # 开发机(虚拟局域网):http://172.16.2.91:8000/api/v1/health
 
 # 数据库
 docker compose up -d postgres # 或本地 PostgreSQL;Milvus v3.0.0 已部署于本机 Docker(端口 19530)
@@ -53,6 +53,13 @@ pnpm build                    # tsc -b && vite build
 ```
 
 ## 团队开发协作约定
+
+### 团队网络与访问
+
+- 开发机(虚拟局域网)地址:**172.16.2.91**;后端基址 `http://172.16.2.91:8000/api/v1`。
+- CORS 已放开(`["*"]`);后端以 `--host 0.0.0.0` 启动,团队成员可直接请求该地址。
+- 前端开发:成员本地跑 vite;连接开发机后端时,在 `frontend/.env.development` 设 `VITE_PROXY_TARGET=http://172.16.2.91:8000`(默认 localhost:8000)。
+- 若团队无法访问,检查 Windows 防火墙是否放行 8000/5432/19530 端口。
 
 ### 角色与职责
 

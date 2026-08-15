@@ -25,7 +25,7 @@ cp .env.example .env          # 填入 LLM/Embedding/TTS 密钥
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0
-# 本机:http://localhost:8000/api/v1/health ;团队成员:http://<本机IP>:8000/api/v1/health
+# 本机:http://localhost:8000/api/v1/health ;团队成员(虚拟局域网):http://172.16.2.91:8000/api/v1/health
 ```
 
 ### 3. 前端
@@ -36,6 +36,8 @@ pnpm install
 pnpm dev
 # http://localhost:5173
 ```
+
+**团队协作访问开发机后端:** 开发机(虚拟局域网)地址 `172.16.2.91`;成员在 `frontend/.env.development` 中设置 `VITE_PROXY_TARGET=http://172.16.2.91:8000`,vite 代理即指向开发机后端(默认 `http://localhost:8000`)。
 
 ## 目录结构
 
