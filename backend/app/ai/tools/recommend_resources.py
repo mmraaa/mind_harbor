@@ -34,6 +34,7 @@ registry.register(
         description=(
             "用户需要心理资源(求助渠道/科普文章/心理游戏/心理书籍)时调用,"
             "按 need 关键词匹配资源库并返回卡片列表。"
+            "将返回的相应的内容介绍给用户, 并且附上URL"
         ),
         parameters={
             "type": "object",

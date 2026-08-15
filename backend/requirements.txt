@@ -24,6 +24,9 @@ bcrypt>=4.0
 openai>=1.30
 httpx>=0.27
 
+# TTS(CosyVoice,阿里云百炼官方 SDK)
+dashscope>=1.21
+
 # 表单与上传
 python-multipart>=0.0.9
 

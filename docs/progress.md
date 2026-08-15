@@ -56,6 +56,15 @@
 - **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
 - **commit**:`2cd0311`(接口+记忆)、后续文档提交。
 
+### 2026-08-15 · CosyVoice TTS 修复
+
+- **问题**:百炼 compatible-mode 不支持 OpenAI 兼容 `/audio/speech`(404);CosyVoice 需 DashScope SDK。
+- **修复**:`adapters/tts.py` 改用 **dashscope `HttpSpeechSynthesizer`**(非流式);TTS_BASE_URL 为 compatible-mode 地址时自动派生 `/api/v1` 专属域名;`status_code==0` 视为成功(SDK 语义),`audio_url` 下载音频字节。
+- **音色修正**:`Cherry` 非 qwen-audio-3.0-tts-flash 有效音色(引擎 411)→ 改为 `longanhuan_v3.6`(支持中文普通话)。
+- **真机验证**:合成成功(87KB mp3);`speak_voice` 工具返回 base64 音频(67KB),不再降级文字卡片。
+- **测试**:81 passed。依赖新增 `dashscope>=1.21`。
+- 提交:`(待)`
+
 ### 2026-08-15 · RAG 收敛为 Agentic(按需检索)
 
 - **问题**:dialogue 每轮自动 RAG 与 `search_knowledge` 工具重复(同一轮可能检索两次)。
