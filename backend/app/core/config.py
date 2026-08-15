@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
-    # CORS
-    cors_origins: list[str] = ["http://localhost:5173"]
+    # CORS(团队开发环境放开所有来源,生产请收紧为白名单)
+    cors_origins: list[str] = ["*"]
 
     # 大模型
     llm_api_key: str = ""

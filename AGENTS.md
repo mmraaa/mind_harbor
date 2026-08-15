@@ -36,7 +36,7 @@ MindHarbor — 面向大学生的 AI 心理咨询与情感陪伴助手课程项�
 cp .env.example .env          # 首次:填入 LLM/Embedding/TTS 密钥
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload # http://localhost:8000/api/v1/health
+uvicorn app.main:app --reload --host 0.0.0.0 # 团队可访问:http://<本机IP>:8000/api/v1/health
 
 # 数据库
 docker compose up -d postgres # 或本地 PostgreSQL;Milvus v3.0.0 已部署于本机 Docker(端口 19530)

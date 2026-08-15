@@ -24,8 +24,8 @@ cd backend
 cp .env.example .env          # 填入 LLM/Embedding/TTS 密钥
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
-# http://localhost:8000/api/v1/health
+uvicorn app.main:app --reload --host 0.0.0.0
+# 本机:http://localhost:8000/api/v1/health ;团队成员:http://<本机IP>:8000/api/v1/health
 ```
 
 ### 3. 前端
