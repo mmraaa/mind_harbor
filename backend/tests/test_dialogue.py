@@ -7,6 +7,7 @@
 """
 
 import json
+import logging
 
 import pytest
 
@@ -225,6 +226,87 @@ def test_sse_event_format(client, seed_user, patch_ai):
         if line.startswith("data: "):
             evt = json.loads(line[len("data: "):])
             assert set(evt.keys()) == {"type", "payload"}
+
+
+# ---------- error 事件兜底 ----------
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t\n  "])
+def test_chat_blank_content_yields_error_without_creating_session(
+    client, seed_user, patch_ai, db, blank
+):
+    """空/空白内容 → type==error 事件,且不创建孤儿会话。"""
+    token = _login(client)
+    r = client.post("/api/v1/chat", json={"content": blank}, headers=_headers(token))
+    assert r.status_code == 200
+    assert "text/event-stream" in r.headers["content-type"]
+
+    events = _parse_sse(r.text)
+    assert len(events) == 1
+    assert events[0]["type"] == "error"
+    assert set(events[0].keys()) == {"type", "payload"}
+    assert events[0]["payload"]["message"] == "消息内容不能为空"
+
+    assert db.query(ChatSession).count() == 0
+    assert db.query(Message).count() == 0
+
+
+def test_journal_generation_failure_yields_error_event(
+    client, seed_user, patch_ai, db, monkeypatch, caplog
+):
+    """日记生成抛异常 → type==error 事件;通用文案,异常详情只进日志。"""
+    caplog.set_level(logging.ERROR)
+    token = _login(client)
+
+    def json_with_journal_failure(system, user, **kw):
+        if "日记" in system:
+            raise RuntimeError("日记模型超时")
+        return fake_complete_json(system, user, **kw)
+
+    monkeypatch.setattr(llm_mod, "complete_json", json_with_journal_failure)
+    r = client.post(
+        "/api/v1/chat",
+        json={"content": "聊聊考试", "end_session": True},
+        headers=_headers(token),
+    )
+    assert r.status_code == 200
+
+    events = _parse_sse(r.text)
+    assert any(e["type"] == "text" for e in events)  # 正常回复先到达
+    errs = [e for e in events if e["type"] == "error"]
+    assert len(errs) == 1
+    assert errs[0]["payload"]["message"] == "生成过程出现异常,请稍后重试"
+    assert "日记模型超时" not in errs[0]["payload"]["message"]  # 不泄露异常原文
+    assert not any(e["type"] == "journal" for e in events)
+
+    assert db.query(Journal).count() == 0
+    session = db.query(ChatSession).one()
+    assert session.status == "active"  # 日记失败 → 不标记 closed
+    assert "日记模型超时" in caplog.text  # 异常详情进日志
+
+
+def test_chat_mid_stream_exception_yields_error_event(
+    client, seed_user, patch_ai, monkeypatch, caplog
+):
+    """流中途异常 → gen() 兜底产出 type==error 事件,不中断流、不泄异常。"""
+    caplog.set_level(logging.ERROR)
+    token = _login(client)
+
+    def stream_then_raise(messages, **kw):
+        yield "我"  # 已产出增量后才抛错,模拟流中途中断
+        raise RuntimeError("流式连接中断")
+
+    monkeypatch.setattr(llm_mod, "stream_chat", stream_then_raise)
+    r = client.post("/api/v1/chat", json={"content": "你好"}, headers=_headers(token))
+    assert r.status_code == 200
+
+    events = _parse_sse(r.text)
+    assert [e["payload"]["content"] for e in events if e["type"] == "text"] == ["我"]
+    errs = [e for e in events if e["type"] == "error"]
+    assert len(errs) == 1
+    assert errs[0]["payload"]["message"] == "生成过程出现异常,请稍后重试"
+    assert "流式连接中断" not in errs[0]["payload"]["message"]
+    assert "流式连接中断" in caplog.text
 
 
 # ---------- 会话权限 ----------

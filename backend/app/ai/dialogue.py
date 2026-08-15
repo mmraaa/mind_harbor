@@ -5,6 +5,7 @@
 格式化成 `data: {json}\n\n` 由 `app/api/chat.py` 负责。
 """
 
+import logging
 from typing import Iterator
 
 from fastapi import HTTPException, status
@@ -18,6 +19,12 @@ from app.models.emotion import Emotion
 from app.models.session import ChatSession, Message
 from app.models.user import User
 from app.schemas.chat import ChatRequest
+
+logger = logging.getLogger(__name__)
+
+# 给前端的通用异常文案:内部错误细节只进日志,不外泄
+GENERIC_ERROR_MSG = "生成过程出现异常,请稍后重试"
+BLANK_CONTENT_MSG = "消息内容不能为空"
 
 SYSTEM_PROMPT = (
     "你是 MindHarbor,面向大学生的 AI 心理咨询与情感陪伴助手。"
@@ -72,7 +79,7 @@ def chat_stream(
     """
     content = body.content.strip()
     if not content:
-        yield _sse("error", {"message": "消息内容不能为空"})
+        yield _sse("error", {"message": BLANK_CONTENT_MSG})
         return
 
     prev = _load_messages(db, session.id)
@@ -148,8 +155,9 @@ def _finish_session(db: Session, user: User, session: ChatSession) -> Iterator[d
     """会话收尾:LLM 生成情绪日记(Journal+Emotion 原子落库)并输出 journal 卡片事件。"""
     try:
         j = journal.generate(session.id, db, user.id)
-    except Exception as exc:  # noqa: BLE001  LLM 失败不应中断整个流
-        yield _sse("error", {"message": f"日记生成失败:{exc}"})
+    except Exception:  # noqa: BLE001  LLM 失败不应中断整个流;详情进日志,前端只收通用文案
+        logger.exception("日记生成失败(session_id=%s, user_id=%s)", session.id, user.id)
+        yield _sse("error", {"message": GENERIC_ERROR_MSG})
         return
     session.status = "closed"
     db.commit()
