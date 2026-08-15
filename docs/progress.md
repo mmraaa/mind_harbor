@@ -42,6 +42,13 @@
 - **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
 - **commit**:`2cd0311`(接口+记忆)、后续文档提交。
 
+### 2026-08-15 · 历史会话接口变更:按状态分组 + 已结束不可续聊
+
+- `GET /chat/sessions` 返回分组 `{active: [...], closed: [...]}`(进行中 / 已结束各 ≤50 条)。
+- **后端状态校验**:`POST /chat` 携带已结束会话(`status=closed`)→ 400「会话已结束,只能浏览历史,无法继续对话」;已结束会话仍可 `GET .../messages` 浏览。
+- 测试:14→16 项(分组、续聊被拒 400、已结束可浏览)。**前端适配已移交前端团队**(FavoritesHistory/Chat 需按分组结构改造)。
+- 提交:`(待)`
+
 ### 2026-08-15 · Advanced RAG 优化(切片 + 查询)
 
 - **切片优化**:`chunking.py` 重写为**标题层级感知 + 父子分块(Small-to-Big)**——按 markdown 标题树切「节」(父块),子块注入 `[文档 > 节]` 上下文前缀进 Milvus,`parent_id` 关联父块;`knowledge_chunks` 表加 `parent_id`/`is_parent` 列。

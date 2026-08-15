@@ -42,7 +42,7 @@ RISK_CARD = {
 
 
 def get_or_create_session(db: Session, user: User, session_id: int | None) -> ChatSession:
-    """校验或创建会话;非本人会话 403,不存在 404。"""
+    """校验或创建会话;非本人会话 403,不存在 404,已结束会话 400(仅可浏览,不能续聊)。"""
     if session_id is None:
         session = ChatSession(user_id=user.id)
         db.add(session)
@@ -54,6 +54,11 @@ def get_or_create_session(db: Session, user: User, session_id: int | None) -> Ch
         raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
     if session.user_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
+    if session.status == "closed":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "会话已结束,只能浏览历史,无法继续对话",
+        )
     return session
 
 

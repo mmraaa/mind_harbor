@@ -33,17 +33,22 @@ def _format_event(evt: dict) -> str:
 def list_sessions(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> list[dict]:
-    """我的会话列表(倒序,最多 50 条)。"""
+) -> dict:
+    """我的会话列表,按状态分组(倒序,各最多 50 条):
+
+    - `active`:进行中(可继续对话);
+    - `closed`:已结束(只能浏览历史,不可续聊——后端在 POST /chat 校验)。
+    """
     rows = (
         db.query(ChatSession)
         .filter_by(user_id=user.id)
         .order_by(ChatSession.id.desc())
-        .limit(50)
+        .limit(100)
         .all()
     )
-    return [
-        {
+
+    def _item(s: ChatSession) -> dict:
+        return {
             "id": s.id,
             "title": s.title,
             "summary": s.summary,
@@ -51,8 +56,11 @@ def list_sessions(
             "risk_level": s.risk_level,
             "status": s.status,
         }
-        for s in rows
-    ]
+
+    active, closed = [], []
+    for s in rows:
+        (closed if s.status == "closed" else active).append(_item(s))
+    return {"active": active[:50], "closed": closed[:50]}
 
 
 @router.get("/sessions/{session_id}/messages")

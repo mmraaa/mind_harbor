@@ -46,21 +46,55 @@ def test_register_short_password_rejected(client):
 # ---------- 会话列表与历史 ----------
 
 
-def test_sessions_list_only_own(client, seed_user, db):
+def test_sessions_list_grouped_by_status_and_only_own(client, seed_user, db):
+    """会话列表按状态分组(active/closed),且只返回本人的。"""
     other = db.query(User).filter_by(username="stu2").first()
     if other is None:
         other = User(role="student", username="stu2", name="他人", password_hash="x")
         db.add(other)
         db.flush()
-    db.add(ChatSession(user_id=seed_user.id, title="我的会话"))
+    db.add(ChatSession(user_id=seed_user.id, title="我的进行中"))
+    db.add(ChatSession(user_id=seed_user.id, title="我的已结束", status="closed"))
     db.add(ChatSession(user_id=other.id, title="别人的会话"))
     db.commit()
 
     token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
     r = client.get("/api/v1/chat/sessions", headers={"Authorization": f"Bearer {token}"})
+
     assert r.status_code == 200
-    titles = [s["title"] for s in r.json()]
-    assert titles == ["我的会话"]
+    data = r.json()
+    assert [s["title"] for s in data["active"]] == ["我的进行中"]
+    assert [s["title"] for s in data["closed"]] == ["我的已结束"]
+
+
+def test_chat_rejects_continued_closed_session(client, seed_user, db):
+    """已结束会话只能浏览,不能续聊:POST /chat 带 closed 会话 → 400。"""
+    s = ChatSession(user_id=seed_user.id, title="已结束", status="closed")
+    db.add(s)
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
+    r = client.post(
+        "/api/v1/chat",
+        json={"content": "还能聊吗", "session_id": s.id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 400
+    assert "已结束" in r.json()["detail"]
+
+
+def test_closed_session_still_browsable(client, seed_user, db):
+    """已结束会话仍可浏览历史消息。"""
+    s = ChatSession(user_id=seed_user.id, title="已结束", status="closed")
+    db.add(s)
+    db.flush()
+    db.add(Message(session_id=s.id, role="user", content="历史消息"))
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
+    r = client.get(f"/api/v1/chat/sessions/{s.id}/messages", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.json()[0]["content"] == "历史消息"
 
 
 def test_session_messages_returns_history(client, seed_user, db):
