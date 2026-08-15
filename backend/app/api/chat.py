@@ -8,13 +8,14 @@ type 枚举:text(回复增量/整段)、tool_card(工具卡片)、journal(会话
 import json
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.ai import dialogue
 from app.api.deps import get_current_user
 from app.core.database import get_db
+from app.models.session import ChatSession, Message
 from app.models.user import User
 from app.schemas.chat import ChatRequest
 
@@ -25,6 +26,64 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 def _format_event(evt: dict) -> str:
     return f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+
+
+@router.get("/sessions")
+def list_sessions(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """我的会话列表(倒序,最多 50 条)。"""
+    rows = (
+        db.query(ChatSession)
+        .filter_by(user_id=user.id)
+        .order_by(ChatSession.id.desc())
+        .limit(50)
+        .all()
+    )
+    return [
+        {
+            "id": s.id,
+            "title": s.title,
+            "summary": s.summary,
+            "started_at": s.started_at.isoformat() if s.started_at else None,
+            "risk_level": s.risk_level,
+            "status": s.status,
+        }
+        for s in rows
+    ]
+
+
+@router.get("/sessions/{session_id}/messages")
+def list_messages(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """会话历史消息(仅本人);非本人 403、不存在 404。"""
+    session = db.get(ChatSession, session_id)
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
+    if session.user_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
+    rows = (
+        db.query(Message)
+        .filter_by(session_id=session_id)
+        .order_by(Message.id)
+        .all()
+    )
+    return [
+        {
+            "id": m.id,
+            "role": m.role,
+            "content": m.content,
+            "emotion_tags": m.emotion_tags,
+            "tool_cards": m.tool_cards,
+            "is_favorite": m.is_favorite,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        }
+        for m in rows
+    ]
 
 
 @router.post("")
