@@ -31,3 +31,4 @@ logs/
 # 模型与缓存
 *.parquet
 .cache/
+*.tsbuildinfo
