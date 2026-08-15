@@ -6,17 +6,22 @@
 
 - M1 脚手架 + 数据模型 + JWT ✅ 完成
 - M2 RAG 知识库 ✅ 完成
-- M3 对话主流程 + 情绪日记闭环 🔧 实现完成,评审 Approved,1 个 Important 待修复
-- M4 Agent 编排 + 7 工具 ⏳ 未开始
+- M3 对话主流程 + 情绪日记闭环 ✅ 完成
+- M4 Agent 编排 + 7 工具 ⏳ 未开始(将亲自编写与 review,不派子代理)
 - M5–M8 前端与集成 ⏳ 未开始
 
 ## 进行中
 
-### 2026-08-15 · Task 5 修复轮(error 事件测试覆盖)
+(无)
 
-- **内容**:评审发现 Important——`error` 事件路径零测试覆盖;另需处理空白内容孤儿会话、error payload 异常原文泄露两个 Minor。
-- **状态**:修复 agent 被手动停止,待继续。
-- **commit**:待提交。
+## 已完成
+
+### 2026-08-15 · Task 5 修复(error 事件测试覆盖)
+
+- **内容**:Important 修复——`error` 事件路径补 5 个测试(空白内容 3 参数化 + 日记生成失败 + 流中途异常);空白内容在路由层 strip 校验、建会话前拒绝(消除孤儿会话行);`_finish_session` 与 chat 兜底异常改通用文案 `GENERIC_ERROR_MSG`,异常详情进日志不外泄。
+- **Code-review**:主会话亲自审阅采纳(常量单一来源、测试断言覆盖 orphan-session/status/Journal 0 行/日志与 payload 隔离)。
+- **测试**:40 passed(35 基线 + 5 新增)。
+- **commit**:`2be79c5` `fix: add error event tests, guard blank input, sanitize error payload`
 
 ## 已完成
 
@@ -68,6 +73,5 @@
 
 ## 遗留问题(TODO)
 
-- Task 5 Important:error 事件路径零测试覆盖(修复被停止,待继续)。
 - SDD ledger 中 Task 4/5 的 deferred Minor 清单(见 `.superpowers/sdd/2026-08-14-mindharbor-implementation/progress.md`)。
 - 危机热线为示例号码,演示前替换为当地真实热线。
