@@ -25,7 +25,7 @@
   border-radius: 50%;
   font-family: var(--font-display);
   font-size: 28px;
-  color: var(--night-0);
+  color: var(--on-accent);
 }
 
 .profile-name {
@@ -64,11 +64,11 @@
 .tips-warn {
   margin: 0;
   padding: 10px 12px;
-  background: rgba(224, 109, 90, 0.1);
+  background: rgba(192, 57, 43, 0.08);
   border: 1px solid var(--coral-soft);
   border-radius: var(--radius-s);
   font-size: 13px;
-  color: #f2a396;
+  color: var(--coral-text);
 }
 
 .profile-logout {
@@ -78,11 +78,11 @@
   background: transparent;
   border: 1px solid var(--coral-soft);
   border-radius: var(--radius-m);
-  color: var(--coral);
+  color: var(--coral-text);
   font-size: 15px;
   transition: background 0.2s;
 }
 
 .profile-logout:hover {
-  background: rgba(224, 109, 90, 0.1);
+  background: rgba(192, 57, 43, 0.08);
 }

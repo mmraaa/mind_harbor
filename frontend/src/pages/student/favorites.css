@@ -23,7 +23,7 @@
 }
 
 .fav-tab.is-active {
-  color: var(--night-0);
+  color: var(--on-accent);
   background: var(--lighthouse);
   border-color: var(--lighthouse);
   font-weight: 600;
@@ -67,10 +67,10 @@
 
 .risk-badge {
   padding: 1px 8px;
-  background: rgba(224, 109, 90, 0.15);
+  background: rgba(192, 57, 43, 0.12);
   border: 1px solid var(--coral-soft);
   border-radius: 999px;
-  color: #f2a396;
+  color: var(--coral-text);
   font-size: 11px;
 }
 

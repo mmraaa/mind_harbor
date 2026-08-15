@@ -1,22 +1,30 @@
 /* ============================================================
-   MindHarbor 设计 token —— 「夜航港湾」
-   深海夜 + 灯塔暖光;珊瑚色仅用于危机/风险语义。
+   MindHarbor 设计 token —— 「晨光港湾」
+   主题从"夜航港湾"(深海夜)反转为暖色晨光:
+   灯塔仍是主题核心,但此刻是日出时分的灯塔。
+   暖米沙岸 + 日出橙 + 一抹雾蓝(冷暖对比)。
+
+   注:变量沿用 `--night-*` 等旧名(源自深色主题),为避免改动
+   全部引用文件而保留;值已按暖色浅底重新定义。新语义变量:
+   --on-accent(强调底上的文字)、--coral-text(危机文字)。
    ============================================================ */
 
 :root {
-  /* 色板 */
-  --night-0: #0b1d2a;      /* 深海夜:主背景 */
-  --night-1: #12293a;      /* 面板 */
-  --night-2: #1b3a4e;      /* 抬升 / 边框 */
-  --night-3: #27485e;      /* hover 态 */
-  --fog: #e8f1f5;          /* 正文 */
-  --fog-dim: #9db4c0;      /* 次级文本 */
-  --fog-faint: #5f7a88;    /* 弱提示 */
-  --lighthouse: #f5b24a;   /* 灯塔暖光:主强调(少量使用) */
-  --lighthouse-soft: #c98f35;
-  --water: #7fb4c9;        /* 水面蓝:次级 / 链接 */
-  --coral: #e06d5a;        /* 珊瑚:危机 / 风险语义色 */
-  --coral-soft: #a04c3f;
+  /* 色板(暖色) */
+  --night-0: #f7efe2;       /* 主背景:暖米(晨光沙滩) */
+  --night-1: #fffdf8;       /* 面板:暖白 */
+  --night-2: #efe2cf;       /* 抬升 / 边框:暖褐浅 */
+  --night-3: #e4d2ba;       /* hover 态:暖褐 */
+  --fog: #3a2e28;           /* 正文:深暖褐 */
+  --fog-dim: #7c6b5d;       /* 次级文本 */
+  --fog-faint: #a29385;     /* 弱提示 */
+  --lighthouse: #e8853b;    /* 日出橙:主强调(少量使用) */
+  --lighthouse-soft: #c96a2c;
+  --water: #5b8ea6;         /* 雾蓝:次级 / 链接(冷暖对比) */
+  --coral: #c0392b;         /* 珊瑚深红:危机 / 风险语义色 */
+  --coral-soft: #9b3227;
+  --on-accent: #2e231d;     /* 强调色底上的文字 */
+  --coral-text: #a83228;    /* 危机文字(浅底可读) */
 
   /* 字体 */
   --font-display: "Noto Serif SC", "Songti SC", "SimSun", serif;
@@ -29,7 +37,7 @@
   --radius-m: 12px;
   --radius-l: 20px;
   --nav-w: 224px;
-  --shadow-soft: 0 4px 24px rgba(0, 0, 0, 0.35);
+  --shadow-soft: 0 4px 24px rgba(60, 42, 26, 0.12);
 
   /* 动效 */
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);

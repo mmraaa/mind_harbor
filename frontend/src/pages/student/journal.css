@@ -29,7 +29,7 @@
 }
 
 .page-state.is-error {
-  color: #f2a396;
+  color: var(--coral-text);
 }
 
 .back-link {

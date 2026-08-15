@@ -113,10 +113,10 @@
   margin: 0;
   align-self: center;
   padding: 8px 14px;
-  background: rgba(224, 109, 90, 0.12);
+  background: rgba(192, 57, 43, 0.1);
   border: 1px solid var(--coral-soft);
   border-radius: var(--radius-s);
-  color: #f2a396;
+  color: var(--coral-text);
   font-size: 13px;
 }
 
@@ -138,7 +138,7 @@
   display: flex;
   gap: 14px;
   align-items: flex-start;
-  background: rgba(127, 180, 201, 0.08);
+  background: rgba(91, 142, 166, 0.1);
   border: 1px solid var(--night-3);
 }
 
@@ -208,13 +208,13 @@
 }
 
 .crisis-card {
-  background: rgba(224, 109, 90, 0.1);
+  background: rgba(192, 57, 43, 0.08);
   border: 1px solid var(--coral);
 }
 
 .crisis-hotline {
   margin: 0;
-  color: #f2a396;
+  color: var(--coral-text);
   font-weight: 600;
 }
 
@@ -359,14 +359,15 @@
   background: var(--lighthouse);
   border: none;
   border-radius: var(--radius-m);
-  color: var(--night-0);
+  color: var(--on-accent);
   font-weight: 600;
   font-size: 14px;
   transition: background 0.2s var(--ease-out);
 }
 
 .chat-send:hover:not(:disabled) {
-  background: #ffc46e;
+  background: var(--lighthouse-soft);
+  color: #fffdf8;
 }
 
 .chat-send:disabled {
