@@ -11,7 +11,7 @@ import random
 
 import pytest
 
-from app.ai.rag.chunking import chunk_text
+from app.ai.rag.chunking import chunk_document, chunk_text
 from app.ai.rag.ingest import ingest_document
 from app.ai.rag.milvus import MilvusStore
 from app.ai.rag.search import search
@@ -114,22 +114,30 @@ def test_ingest_document_persists_and_returns_count(db, milvus_store, patch_embe
     path = tmp_path / "考试焦虑.md"
     path.write_text(SAMPLE_DOC, encoding="utf-8")
 
-    expected = len(chunk_text(SAMPLE_DOC))
+    expected = len(chunk_document(SAMPLE_DOC))
     n = ingest_document(path, db=db, store=milvus_store)
 
     assert n == expected
     doc = db.query(KnowledgeDoc).filter_by(source="考试焦虑.md").first()
     assert doc is not None
     assert doc.title == "考试焦虑应对"  # 取首个 # 标题
-    rows = db.query(KnowledgeChunk).filter_by(doc_id=doc.id).order_by(KnowledgeChunk.seq).all()
-    assert len(rows) == n
-    assert [r.seq for r in rows] == list(range(n))
-    assert rows[0].content == chunk_text(SAMPLE_DOC)[0]
 
-    # 向量已写入 Milvus:用同一块文本的向量检索,首条命中即该 chunk
-    vec = fake_embed([rows[0].content])[0]
+    children = (
+        db.query(KnowledgeChunk)
+        .filter_by(doc_id=doc.id, is_parent=False)
+        .order_by(KnowledgeChunk.seq)
+        .all()
+    )
+    parents = db.query(KnowledgeChunk).filter_by(doc_id=doc.id, is_parent=True).all()
+    assert len(children) == n
+    assert [c.seq for c in children] == list(range(n))
+    assert len(parents) >= 1
+    assert all(c.parent_id is not None for c in children)
+
+    # 子块向量已写入 Milvus:用同一块文本的向量检索,首条命中即该 chunk
+    vec = fake_embed([children[0].content])[0]
     hits = milvus_store.search(vec, top_k=3)
-    assert hits and hits[0]["id"] == rows[0].id
+    assert hits and hits[0]["id"] == children[0].id
     assert hits[0]["distance"] == pytest.approx(1.0)
 
 
@@ -175,12 +183,41 @@ def test_search_blank_query_returns_empty_list(db, milvus_store, patch_embed):
 
 
 def test_search_keyword_hybrid_boost(db, milvus_store, patch_embed, tmp_path):
-    """可选关键词混合:向量检索命中之外,关键词命中(如"热线")应被召回并前置。"""
+    """关键词混合(RRF 加权):关键词命中(如"热线")应被召回并前置。"""
     _ingest_fixture(db, milvus_store, tmp_path)
     hits = search("失眠怎么办", top_k=5, keyword="热线", db=db, store=milvus_store)
     assert hits
     assert hits[0].doc_title == "校内心理咨询预约流程"
     assert "热线" in hits[0].text
+
+
+def test_search_small_to_big_returns_parent_context(db, milvus_store, patch_embed, tmp_path):
+    """Small-to-Big:命中子块 → context 为父块(整节)文本(去前缀、含完整正文)。"""
+    _ingest_fixture(db, milvus_store, tmp_path)
+    hits = search("考试焦虑", top_k=3, db=db, store=milvus_store)
+    assert hits
+    top = hits[0]
+    assert top.context
+    assert "[考试焦虑应对]" not in top.context  # 父块不带检索前缀
+    assert "考试焦虑是常见的学业压力反应" in top.context  # 含整节正文
+    assert top.context in top.text or "考试焦虑是" in top.text
+
+
+def test_chunk_document_respects_section_titles():
+    """标题感知分块:每节一个子块,content 带 [文档 > 节] 前缀,parent_content 为整节。"""
+    doc = """# 心理中心
+### 一、预约流程
+线上预约,等待短信确认。
+### 二、值班安排
+周一至周五 9:00-17:00。"""
+    chunks = chunk_document(doc)
+    assert len(chunks) == 2
+    assert "[心理中心 > 一、预约流程]" in chunks[0].content
+    assert "预约流程" in chunks[0].section
+    assert "线上预约,等待短信确认。" in chunks[0].parent_content
+    assert "[心理中心 > 二、值班安排]" in chunks[1].content
+    assert "周一至周五 9:00-17:00。" in chunks[1].parent_content
+    assert chunks[0].parent_content != chunks[1].parent_content  # 各节独立父块
 
 
 # ---------- Milvus 封装 ----------

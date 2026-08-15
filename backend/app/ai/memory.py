@@ -78,7 +78,7 @@ def assemble_context(
     if recent:
         parts.append("【近期对话】\n" + "\n".join(f"{m.role}: {m.content}" for m in recent))
     if rag_hits:
-        refs = [f"[{h.doc_title}] {h.text[:200]}" for h in rag_hits]
+        refs = [f"[{h.doc_title}] {(h.context or h.text)[:300]}" for h in rag_hits]
         parts.append("【知识参考】\n" + "\n".join(refs))
     return "\n\n".join(parts)
 

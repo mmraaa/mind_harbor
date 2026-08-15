@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -20,7 +20,11 @@ class KnowledgeDoc(Base):
 
 
 class KnowledgeChunk(Base):
-    """知识块元数据:内容与来源存 PostgreSQL,向量存 Milvus(collection: knowledge_chunks,按 chunk id 对应)。"""
+    """知识块(父子分块,Smal-to-Big):
+
+    - 父块 `is_parent=True`:整节文本,不向量化,供检索命中后回查上下文;
+    - 子块 `is_parent=False`:带 [文档 > 节] 前缀的小块,向量存 Milvus,`parent_id` 指向父块。
+    """
 
     __tablename__ = "knowledge_chunks"
 
@@ -28,3 +32,7 @@ class KnowledgeChunk(Base):
     doc_id: Mapped[int] = mapped_column(ForeignKey("knowledge_docs.id"), index=True)
     content: Mapped[str] = mapped_column(Text)
     seq: Mapped[int] = mapped_column(Integer, default=0)
+    parent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_chunks.id"), index=True, nullable=True
+    )
+    is_parent: Mapped[bool] = mapped_column(Boolean, default=False)
