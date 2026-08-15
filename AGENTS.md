@@ -114,3 +114,4 @@ pnpm build                    # tsc -b && vite build
 - spec / plan 在 `docs/superpowers/` 下,随设计演进同步更新。
 - 新增密钥示例同步到 `backend/.env.example`。
 - 新增约定写回本文件,保持唯一事实来源。
+- **进展记录(每次任务完成后必做)**:完成一个任务(或一个 commit)后,把进展追加到 `docs/progress.md`——格式见该文件头部说明;内容包括:完成内容、涉及文件/接口、测试结果、commit hash、评审结论、遗留问题。团队任何人/任何 AI 会话可通过该文件了解项目当前状态。
