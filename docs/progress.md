@@ -7,7 +7,7 @@
 - M1 脚手架 + 数据模型 + JWT ✅ 完成
 - M2 RAG 知识库 ✅ 完成
 - M3 对话主流程 + 情绪日记闭环 ✅ 完成
-- M4 Agent 编排 + 7 工具 ⏳ 未开始(将亲自编写与 review,不派子代理)
+- M4 Agent 编排 + 7 工具 ✅ 完成
 - M5–M8 前端与集成 ⏳ 未开始
 
 ## 进行中
@@ -15,6 +15,15 @@
 (无)
 
 ## 已完成
+
+### 2026-08-15 · Task 6 Agent 编排 + 7 工具(M4)
+
+- **内容**:`app/adapters/llm.py` 扩展 `chat_with_tools`(function-calling);新建 `app/adapters/tts.py`(OpenAI 兼容 `/audio/speech`);`app/ai/tools/registry.py`(ToolSpec + ToolRegistry 单例,7 工具注册);7 个工具:record_emotion(走 `journal.generate`,铁律:情绪只随日记落库)/ search_knowledge(RAG 检索)/ generate_breathing(3 套内置呼吸模板)/ create_reminder / recommend_resources / query_emotion_stats(SQL Agent)/ speak_voice(TTS → base64 音频卡片);`app/ai/agent.py` 工具决策循环(最多 3 轮,工具失败不中断,错误结果回填 LLM)。
+- **SQL Agent 安全**:sqlglot AST 校验(单语句/SELECT/表白名单 `{emotions,journals,sessions}`)→ 注入 `WHERE user_id=<uid>`(聚合查询同样正确)→ LIMIT 100 → `SET TRANSACTION READ ONLY` 只读执行 → LLM 解释结果。
+- **dialogue.py 集成**:RAG 检索后插入 agent 循环,tool_card 事件先于最终流式回复;工具结果注入最终回复上下文。
+- **测试**:56 passed(40 基线 + 16 新增:注册表完整性、7 工具执行、SQL Agent 合法/非法 4 用例、agent 循环/无工具/最大轮数保护);全部 monkeypatch LLM/TTS,零真实 API;SQL Agent 执行 monkeypatch 测试库连接。
+- **commit**:`be15848` `feat: agent orchestration with 7 tools`
+- **工作方式**:主会话亲自 TDD 实现 + 亲自 review(按用户要求,不派子代理)。
 
 ### 2026-08-15 · Task 5 修复(error 事件测试覆盖)
 
