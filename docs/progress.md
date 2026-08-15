@@ -21,13 +21,16 @@
 
 ### 2026-08-15 · Task 7 学生端前端(分支 feature/m5-student-frontend)
 
-- **设计「夜航港湾」**:深海夜 `#0B1D2A` + 灯塔暖光 `#F5B24A` + 珊瑚危机语义色;标题思源宋体/日记楷体;签名动效"呼吸波纹"(输入区同心圆,尊重 reduced-motion);灯塔 SVG 标识。
+- **设计演进「夜航港湾」→「晨光港湾」**:初版深海夜冷色调,按用户要求反转为**暖色调**(2026-08-15 更新)——暖米 `#F7EFE2` 主底 + 日出橙 `#E8853B` 强调 + 雾蓝 `#5B8EA6` 冷暖对比;灯塔从深夜变日出,叙事一致;新增语义变量 `--on-accent`(强调底文字)、`--coral-text`(危机文字),清理全部硬编码浅色文字(浅底可读)。实测计算样式验证暖色生效、登录闭环正常。
+- **设计「夜航港湾」(初版)**:深海夜 `#0B1D2A` + 灯塔暖光 `#F5B24A` + 珊瑚危机语义色;标题思源宋体/日记楷体;签名动效"呼吸波纹"(输入区同心圆,尊重 reduced-motion);灯塔 SVG 标识。
 - **页面闭环**:登录/注册(注册即登录)→ 学生端导航(桌面侧栏/移动底部 tab)→ 聊天页(SSE 逐 token + 工具卡片:呼吸/来源/危机/日记/语音等 + 结束并生成日记)→ 情绪日记(列表 + 楷体详情)→ 收藏与历史(双 tab)→ 用户主页(退出)。
 - **后端配套 API**(TDD,65→66 测试):`/auth/register`、`/chat/sessions`(+messages)、`/journals/mine`(+详情)、`/favorites` 增删查。
 - **真机联调发现并修复 2 个真实 API bug**:① agent 循环漏 append 带 tool_calls 的 assistant 消息(DeepSeek 400);② 阿里云百炼 TTS 无 OpenAI 兼容 /audio/speech → 降级文字卡片(待单独适配 CosyVoice 异步 API)。
 - **验证**:后端 66 tests 全绿;`pnpm build` 通过(167 模块);真实 LLM 全链路:Agent 工具调用(voice 降级卡片)→ 流式 text → RAG sources → journal 落库。
 - **铁律变更**:学生可只读查看自己的日记(AGENTS.md 已同步)。
-- **commits**:`d33a453`(学生 API)、`7f82757`(agent/TTS 修复)、`82754a6`(前端页面)。
+- **commits**:`d33a453`(学生 API)、`7f82757`(agent/TTS 修复)、`82754a6`(前端页面)、`dfba3f9`(暖色主题)。
+
+**示例账号**(seed.py 种子):学生端 `student / student123`;咨询师端 `counselor / counselor123`;管理端 `admin / admin123`。
 
 ### 2026-08-15 · Task 6 Agent 编排 + 7 工具(M4)
 
