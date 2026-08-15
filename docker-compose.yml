@@ -1,6 +1,18 @@
+# 向量库 Milvus v3.0.0 已在本机 Docker 部署(端口 19530),此处不再编排。
+# 如需编排(备选):
+#   milvus:
+#     image: milvusdb/milvus:v3.0.0
+#     container_name: mindharbor-milvus
+#     command: ["milvus", "run", "standalone"]
+#     ports:
+#       - "19530:19530"
+#       - "9091:9091"
+#     volumes:
+#       - milvusdata:/var/lib/milvus
+
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: postgres:16
     container_name: mindharbor-pg
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-mindharbor}

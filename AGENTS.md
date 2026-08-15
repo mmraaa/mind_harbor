@@ -21,7 +21,7 @@ MindHarbor — 面向大学生的 AI 心理咨询与情感陪伴助手课程项�
   - `services/` 业务服务层
   - `ai/` 对话 `dialogue.py`、情绪 `emotion.py`、日记 `journal.py`、记忆 `memory.py`、Agent `agent.py` + `tools/`(7 工具)+ `rag/`(ingest/search)
   - `models/` SQLAlchemy、`schemas/` Pydantic、`adapters/` 模型适配层
-- 数据:PostgreSQL + pgvector(`KnowledgeChunk.embedding` 向量检索);`journals`↔`emotions` 由 `journal_id` 关联,情绪记录只在 LLM 生成日记时产出。
+- 数据:PostgreSQL(业务数据)+ Milvus v3.0.0(向量检索,本机 Docker 端口 19530);chunk 元数据存 PG、向量存 Milvus collection(`knowledge_chunks`,按 chunk id 关联);`journals`↔`emotions` 由 `journal_id` 关联,情绪记录只在 LLM 生成日记时产出。
 
 **铁律(改动前必读)**:
 - 所有 AI 能力只经 `app/adapters/` 访问模型,禁止直连具体供应商。
@@ -39,7 +39,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload # http://localhost:8000/api/v1/health
 
 # 数据库
-docker compose up -d postgres # 或本地 pgvector 实例
+docker compose up -d postgres # 或本地 PostgreSQL;Milvus v3.0.0 已部署于本机 Docker(端口 19530)
 python scripts/init_db.py     # 建表
 python scripts/seed.py        # 种子数据(admin/counselor/student + 资源)
 

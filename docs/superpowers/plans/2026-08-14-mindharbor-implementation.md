@@ -4,9 +4,9 @@
 
 **Goal:** 实现面向大学生的 AI 心理咨询与情感陪伴助手——对话/RAG/Agent/情绪日记闭环 + 学生端/管理端/咨询师端三角色前端。
 
-**Architecture:** 三角色前端(React+Vite,按角色路由)+ 单一后端(FastAPI 模块化单体)+ PostgreSQL(pgvector)。AI 编排层含情绪识别、风险筛查、上下文记忆管理(`memory.py`)、情绪日记生成(`journal.py`)、RAG、Agent 工具集。
+**Architecture:** 三角色前端(React+Vite,按角色路由)+ 单一后端(FastAPI 模块化单体)+ PostgreSQL(业务)+ Milvus v3.0.0(向量,本机 Docker:19530)。AI 编排层含情绪识别、风险筛查、上下文记忆管理(`memory.py`)、情绪日记生成(`journal.py`)、RAG、Agent 工具集。
 
-**Tech Stack:** Python 3.12 / FastAPI / SQLAlchemy 2 / PostgreSQL+pgvector / React 18+Vite+TS / Zustand+React Query / SSE 流式 / 云端 LLM API(function calling)
+**Tech Stack:** Python 3.12 / FastAPI / SQLAlchemy 2 / PostgreSQL(业务)+ Milvus v3.0.0(向量,pymilvus)/ React 18+Vite+TS / Zustand+React Query / SSE 流式 / 云端 LLM API(function calling)
 
 **Spec:** `docs/superpowers/specs/2026-08-14-mindharbor-design.md`
 
@@ -116,6 +116,12 @@ POSTGRES_PORT=5432
 POSTGRES_DB=mindharbor
 POSTGRES_USER=mindharbor
 POSTGRES_PASSWORD=mindharbor
+
+# 向量库(Milvus v3.0.0,本机 Docker 已部署)
+MILVUS_HOST=localhost
+MILVUS_PORT=19530
+MILVUS_COLLECTION=knowledge_chunks
+
 JWT_SECRET=change-me-in-prod
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=1440
@@ -295,7 +301,7 @@ git add -A && git commit -m "chore: scaffold project (backend/frontend, env, con
 
 - [ ] **Step 1: 写模型与测试**
 
-`User(id, role, username, name, password_hash)`;`Session(id, user_id, title, summary, risk_level)`;`Message(id, session_id, role, content, emotion_tags)`;`Journal(id, user_id, session_id, summary, content, mood_score)`;`Emotion(id, user_id, journal_id, session_id, category, intensity, stress_source, support_need)`;`Resource`;`Reminder`;`KnowledgeChunk(id, doc_id, content, embedding)`;`UserMemory(id, user_id, memory_type, content, importance)`。
+`User(id, role, username, name, password_hash)`;`Session(id, user_id, title, summary, risk_level)`;`Message(id, session_id, role, content, emotion_tags)`;`Journal(id, user_id, session_id, summary, content, mood_score)`;`Emotion(id, user_id, journal_id, session_id, category, intensity, stress_source, support_need)`;`Resource`;`Reminder`;`KnowledgeChunk(id, doc_id, content, seq)`(向量存 Milvus collection,按 chunk id 关联);`UserMemory(id, user_id, memory_type, content, importance)`。
 
 - [ ] **Step 2: init_db + seed + 测试**
 
@@ -342,7 +348,7 @@ git commit -m "feat: JWT auth with role-based access"
 ### Task 4: RAG 知识库(M2)
 
 **Files:**
-- Create: `backend/app/ai/rag/chunking.py`、`ingest.py`、`search.py`;`backend/app/adapters/embedding.py`
+- Create: `backend/app/ai/rag/chunking.py`、`ingest.py`、`search.py`、`milvus.py`(MilvusClient 封装);`backend/app/adapters/embedding.py`
 - Create: `backend/scripts/ingest_knowledge.py`
 - Test: `backend/tests/test_rag.py`
 
@@ -352,11 +358,11 @@ git commit -m "feat: JWT auth with role-based access"
 
 - [ ] **Step 1: 分块 + 入库管道**
 
-`chunking.py`:按段落+固定窗口切块;`ingest.py`:读取文档 → 分块 → `embedding.embed(texts)` → upsert `KnowledgeChunk`(embedding 存 `Vector` 列)。
+`chunking.py`:按段落+固定窗口切块;`ingest.py`:读取文档 → 分块 → chunk 元数据写 PostgreSQL `KnowledgeChunk`,`embedding.embed(texts)` 向量 + chunk id 写入 Milvus collection(`milvus.py` 封装 `MilvusClient.upsert`)。
 
 - [ ] **Step 2: 在线检索**
 
-`search.py`:query → embedding → pgvector `<=>` 余弦 top-k → 可选关键词混合 → 返回带来源的命中。
+`search.py`:query → embedding → `MilvusClient.search` 余弦 top-k → 按命中 chunk id 回查 PostgreSQL 取内容与来源 → 可选关键词混合 → 返回带来源的命中。
 
 - [ ] **Step 3: 测试 + 脚本**
 
@@ -365,7 +371,7 @@ git commit -m "feat: JWT auth with role-based access"
 - [ ] **Step 4: 提交**
 
 ```bash
-git commit -m "feat: RAG ingest and pgvector search"
+git commit -m "feat: RAG ingest and Milvus vector search"
 ```
 
 ---
@@ -491,7 +497,7 @@ git commit -m "feat: admin CRUD and counselor student-psychology pages"
 
 - [ ] **Step 2: docker-compose + 演示脚本 + 提交**
 
-一键起 `pgvector/postgres + backend + frontend`;`docs/demo.md` 记录演示流程。提交 `feat: integration and deployment`。
+一键起 `postgres + backend + frontend`(Milvus v3.0.0 已独立部署于本机 Docker:19530);`docs/demo.md` 记录演示流程。提交 `feat: integration and deployment`。
 
 ---
 

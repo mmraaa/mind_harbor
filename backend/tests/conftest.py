@@ -12,20 +12,6 @@ from app.core.security import hash_password
 from app.main import app
 from app.models.user import User
 
-VECTOR_TABLES = {"knowledge_docs", "knowledge_chunks"}
-
-
-def _vector_ok(engine) -> bool:
-    with engine.connect() as conn:
-        return conn.execute(text("SELECT 1 FROM pg_extension WHERE extname='vector'")).fetchone() is not None
-
-
-def _tables(engine):
-    tables = list(Base.metadata.sorted_tables)
-    if _vector_ok(engine):
-        return tables
-    return [t for t in tables if t.name not in VECTOR_TABLES]
-
 
 @pytest.fixture
 def engine():
@@ -36,10 +22,10 @@ def engine():
         f"@{s.postgres_host}:{s.postgres_port}/{test_db}"
     )
     eng = create_engine(url)
-    Base.metadata.drop_all(eng, tables=_tables(eng))
-    Base.metadata.create_all(eng, tables=_tables(eng))
+    Base.metadata.drop_all(eng)
+    Base.metadata.create_all(eng)
     yield eng
-    Base.metadata.drop_all(eng, tables=_tables(eng))
+    Base.metadata.drop_all(eng)
 
 
 @pytest.fixture

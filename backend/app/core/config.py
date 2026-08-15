@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_model: str = "deepseek-chat"
 
+    # Milvus(向量库,本机 Docker 已部署,端口 19530)
+    milvus_host: str = "localhost"
+    milvus_port: int = 19530
+    milvus_collection: str = "knowledge_chunks"
+
     # Embedding
     embedding_api_key: str = ""
     embedding_base_url: str = ""

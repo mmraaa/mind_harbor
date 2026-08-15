@@ -5,7 +5,9 @@ uvicorn[standard]>=0.30
 # 数据层
 sqlalchemy>=2.0
 psycopg[binary]>=3.1
-pgvector>=0.2
+
+# 向量库(Milvus v3.0.0,本机 Docker)
+pymilvus>=2.5
 
 # 配置与校验
 pydantic>=2.7

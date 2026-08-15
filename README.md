@@ -4,17 +4,17 @@
 
 ## 技术栈
 
-- 后端:Python 3.12 · FastAPI · SQLAlchemy 2 · PostgreSQL + pgvector
+- 后端:Python 3.12 · FastAPI · SQLAlchemy 2 · PostgreSQL(业务)+ Milvus v3.0.0(向量检索)
 - AI:云端 LLM API(function calling)+ 自研适配层 / RAG / Agent / 上下文记忆管理
 - 前端:React 18 · Vite · TypeScript · Zustand · React Query · ECharts
 
 ## 快速开始
 
-### 1. 数据库(PostgreSQL + pgvector)
+### 1. 数据库(PostgreSQL 业务数据 + Milvus 向量库)
 
 ```bash
 docker compose up -d postgres
-# 或使用本地已有 pgvector 实例
+# 或使用本地已有 PostgreSQL;Milvus v3.0.0 已部署于本机 Docker(端口 19530),无需启动
 ```
 
 ### 2. 后端

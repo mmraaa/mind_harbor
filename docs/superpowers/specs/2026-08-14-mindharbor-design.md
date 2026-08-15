@@ -45,7 +45,7 @@
 | 后端 | Python + FastAPI(统一后端) | LLM/RAG/Agent 生态最成熟;异步原生,天然支持 SSE 流式聊天;一门语言覆盖全后端 |
 | 大模型接入 | 云端 LLM API(DeepSeek / 通义千问 / 智谱 GLM 任选) | 稳定、快、支持 function calling 与流式;课程项目有免费额度 |
 | 模型适配层 | 自研 `adapters/` 抽象(LLM / Embedding / TTS) | 统一接口,后续可切换本地 Ollama 或更换供应商 |
-| 数据库 | PostgreSQL + pgvector | 业务数据与向量检索共库,零新增基础设施 |
+| 数据库 | PostgreSQL(业务)+ Milvus v3.0.0(向量) | 业务与向量分离;Milvus 部署于本机 Docker,端口 19530 |
 | 前端 | React + Vite(学生端 / 管理端 / 咨询师端三角色入口) | 生态大;配合 React Query + Zustand 轻量状态管理;三角色共用后端 API 与登录态 |
 | 认证 | JWT + 角色权限中间件 | 支持 学生/咨询师/管理员 三角色 |
 | 部署 | 单机 + 可选 docker-compose | 面向课程演示,一键起服务 |
@@ -90,7 +90,7 @@
 │             recommend_resources / query_emotion_stats│
 │             (SQL Agent) / speak_voice (TTS)         │
 │                                                    │
-│  基础设施层  PostgreSQL+pgvector / 模型适配器          │
+│  基础设施层  PostgreSQL + Milvus / 模型适配器        │
 │             (LLM·Embedding·TTS) / 日志 / 风险告警      │
 └────────────────────────────────────────────────────┘
 ```
@@ -173,13 +173,13 @@ LLM 情绪识别 + 日记生成(一次调用,结构化输出)
 **离线入库管道**(`scripts/` + `rag/ingest.py`):
 
 ```
-文档 → 解析(md/txt/pdf)→ 语义分块 → Embedding API 向量化 → 写 pgvector
+文档 → 解析(md/txt/pdf)→ 语义分块 → Embedding API 向量化 → 向量写 Milvus(collection: knowledge_chunks)
 ```
 
 **在线检索**(`rag/search.py`):
 
 ```
-问题 → embedding → pgvector 相似度 top-k + 可选关键词混合
+问题 → embedding → Milvus 向量检索 top-k + 可选关键词混合
      → 重排 → 组装引用上下文 → LLM 生成(带引用)→ 前端"参考来源"卡片
 ```
 
@@ -265,7 +265,7 @@ LLM 情绪识别 + 日记生成(一次调用,结构化输出)
 | `reminders` | id, user_id, content, remind_at, done |
 | `user_memories` | id, user_id, memory_type(profile/fact/preference), content, importance, source, created_at, updated_at |
 | `knowledge_docs` | id, title, source, content_type, meta |
-| `knowledge_chunks` | id, doc_id, content, embedding(vector), seq |
+| `knowledge_chunks` | id, doc_id, content, seq(向量存 Milvus collection,按 chunk id 关联) |
 
 ### 5.2 数据关系(简图)
 
@@ -277,7 +277,7 @@ users 1─∞ emotions / reminders
 users 1─∞ user_memories(长期记忆沉淀)
 users 1─1 counselors(咨询师)
 resources(独立)
-knowledge_docs 1─∞ knowledge_chunks(pgvector 检索)
+knowledge_docs 1─∞ knowledge_chunks(Milvus 向量检索)
 ```
 
 ### 5.3 SQL Agent 安全策略
@@ -304,7 +304,7 @@ knowledge_docs 1─∞ knowledge_chunks(pgvector 检索)
 ## 7. 部署与演示
 
 **本地单机**:
-1. 启动 PostgreSQL(本地或 docker `pgvector/pgvector` 镜像)。
+1. 启动 PostgreSQL(本地或 docker `postgres` 镜像);Milvus v3.0.0 已部署于本机 Docker(端口 19530),无需再启动。
 2. 后端:`uvicorn app.main:app --reload`(含建表、种子数据脚本)。
 3. 前端:`vite dev` 或 build 后静态部署。
 
