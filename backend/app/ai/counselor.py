@@ -25,9 +25,7 @@ COUNSELOR_SYSTEM_PROMPT = (
     "2. 咨询师要查看某学生情绪日记时,调用 search_student_journals;"
     "3. 咨询师想排查情绪异常/高风险学生时,调用 find_at_risk_students;"
     "4. 查询只读,结果请如实转述,不要编造数据;回答用简洁专业的中文。"
-    "5. 当学生触及到专业知识或需要调节压力时,调用search_knowledge"
-    "5. 当学生需要安慰和推荐资源时,调用recommend_resources"
-    "6. 可在一次对话中依次调用多个工具。"
+    "5. 可在一次对话中依次调用多个工具。"
 )
 
 

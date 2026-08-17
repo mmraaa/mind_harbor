@@ -56,6 +56,29 @@
 - **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
 - **commit**:`2cd0311`(接口+记忆)、后续文档提交。
 
+### 2026-08-15 · Agent 提示词注入北京时间(reminder 时间戳)
+
+- **问题**:LLM 不知道当前日期时间,用户说"明天下午3点提醒我"时无法算出准确时间戳。
+- **修复**:`agent.run` 的 system 提示词注入 `【当前时间】YYYY-MM-DD HH:MM:SS(北京时间,UTC+8)`(工具决策与咨询师端共用);`create_reminder` 增加时间合理性校验(早于当前拒绝,naive 时间串按北京时间)。
+- **真机验证**:"明天早上9点提醒我交作业" → `2026-08-18T09:00:00+08:00`(当天 2026-08-17,计算正确)。
+- **测试**:99 passed(新增:提示词含北京时间且接近当前、过去时间拒绝)。
+- 提交:`(待)`
+
+### 2026-08-15 · 咨询师端多维度统计接口
+
+- **结构化查询接口**(`app/api/counselor/stats.py`,前端 ECharts/表格直接渲染,不依赖 LLM):
+  - `GET /counselor/stats/overview` — 总览卡片(学生/会话/风险/日记/平均强度);
+  - `GET /counselor/stats/emotion-distribution?days=&student_id=` — 情绪分布(固定 7 枚举补齐);
+  - `GET /counselor/stats/emotion-trend?days=&student_id=` — 情绪强度按天趋势(主情绪);
+  - `GET /counselor/stats/students?keyword=&risk=` — 学生列表(情绪概况/风险会话);
+  - `GET /counselor/stats/students/{id}/detail` — 学生详情(情绪序列+日记+会话);
+  - `GET /counselor/stats/sessions?risk=&days=` — 会话列表(风险过滤+消息数)。
+- 权限:`require_roles("counselor","admin")`;只读聚合,字段稳定。
+- **真机验证**:overview(21 会话/2 高风险/7 日记)、distribution(5 类)、students risk=high 识别正确。
+- **测试**:97 passed(新增 6:overview/分布/趋势/学生/会话过滤/403)。
+- **契约**:`docs/api.md` 重新生成(19 paths,含全部 stats 接口)。
+- 提交:`(待)`
+
 ### 2026-08-15 · 咨询师端对话 Agent
 
 - **独立工具集** `app/ai/counselor.py` + `counselor_tools.py`(counselor_registry,不污染学生端):

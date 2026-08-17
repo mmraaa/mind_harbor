@@ -1,6 +1,6 @@
 # MindHarbor API 文档
 
-> 由 `scripts/gen_api_docs.py` 从运行中的后端自动生成(共 13 个端点)。
+> 由 `scripts/gen_api_docs.py` 从运行中的后端自动生成(共 19 个端点)。
 > 接口基址:`http://172.16.2.91:8000/api/v1`
 
 ## 鉴权
@@ -29,6 +29,12 @@ Authorization: Bearer <access_token>
 | DELETE | `/api/v1/api/v1/favorites/{message_id}` | Remove Favorite |
 | GET | `/api/v1/api/v1/favorites/mine` | My Favorites |
 | POST | `/api/v1/api/v1/counselor/chat` | Counselor Chat |
+| GET | `/api/v1/api/v1/counselor/stats/overview` | Overview |
+| GET | `/api/v1/api/v1/counselor/stats/emotion-distribution` | Emotion Distribution |
+| GET | `/api/v1/api/v1/counselor/stats/emotion-trend` | Emotion Trend |
+| GET | `/api/v1/api/v1/counselor/stats/students` | Students |
+| GET | `/api/v1/api/v1/counselor/stats/students/{student_id}/detail` | Student Detail |
+| GET | `/api/v1/api/v1/counselor/stats/sessions` | Sessions |
 
 ## GET `/api/v1/api/v1/health`
 
@@ -158,3 +164,45 @@ Authorization: Bearer <access_token>
   - `end_session` (boolean) 是否结束会话并生成情绪日记
 
 **响应**:`Successful Response`
+
+## GET `/api/v1/api/v1/counselor/stats/overview`
+
+**说明**:Overview
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/counselor/stats/emotion-distribution`
+
+**说明**:Emotion Distribution
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/counselor/stats/emotion-trend`
+
+**说明**:Emotion Trend
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/counselor/stats/students`
+
+**说明**:Students
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/counselor/stats/students/{student_id}/detail`
+
+**说明**:Student Detail
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/counselor/stats/sessions`
+
+**说明**:Sessions
+
+**响应**:`Successful Response`
+
