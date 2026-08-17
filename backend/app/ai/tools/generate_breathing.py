@@ -14,24 +14,7 @@ BREATHING_EXERCISES: dict[str, dict] = {
             "用嘴缓缓呼气,默数 8 秒",
             "重复 4 组,感受身体的放松",
         ],
-    },
-    "box": {
-        "name": "四方呼吸",
-        "steps": [
-            "吸气 4 秒 → 屏息 4 秒 → 呼气 4 秒 → 屏息 4 秒",
-            "想象沿着正方形的边依次进行",
-            "重复 5 组",
-        ],
-    },
-    "count": {
-        "name": "数息练习",
-        "steps": [
-            "闭眼,自然呼吸",
-            "每次呼气时默数:1、2、3……数到 10",
-            "走神了就温柔地回到 1 重新开始",
-            "持续 3-5 分钟",
-        ],
-    },
+    }
 }
 DEFAULT_EXERCISE = "478"
 
@@ -51,7 +34,7 @@ registry.register(
         name="generate_breathing",
         description=(
             "用户感到紧张/焦虑、需要即时平复时调用:提供呼吸练习分步引导。"
-            "参数 exercise 可选:478(478 呼吸)/ box(四方呼吸)/ count(数息)。"
+            "参数 exercise :478(478 呼吸)"
         ),
         parameters={
             "type": "object",
