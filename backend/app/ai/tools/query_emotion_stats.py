@@ -8,6 +8,9 @@
 5. 只读连接执行(`SET TRANSACTION READ ONLY`),防误写。
 """
 
+from datetime import date, datetime
+from decimal import Decimal
+
 import sqlglot
 from sqlglot import exp
 from sqlalchemy import text
@@ -20,10 +23,18 @@ from app.core.database import engine as db_engine
 ALLOWED_TABLES = {"emotions", "journals", "sessions"}
 MAX_ROWS = 100
 
+SQL_SCHEMA_HINT = (
+    "可用表结构与列名(必须使用这些确切列名,不要臆造):\n"
+    "- emotions(id, user_id, journal_id, session_id, category, intensity, stress_source, support_need, created_at)\n"
+    "- journals(id, user_id, session_id, summary, content, mood_score, created_at)\n"
+    "- sessions(id, user_id, title, summary, started_at, risk_level, status)\n"
+    "emotions.category 取值: anxious/sad/angry/lonely/tired/calm/hopeful。"
+)
+
 SQL_GEN_PROMPT = (
-    "你是 SQL 生成器。把用户关于自己情绪数据的问题转成一条 PostgreSQL SELECT 语句。"
-    "只允许查询表:emotions / journals / sessions;只输出 SQL 本身,"
-    "不要分号、不要注释、不要解释。"
+    "你是 SQL 生成器。把用户关于自己情绪数据的问题转成一条 PostgreSQL SELECT 语句。\n"
+    + SQL_SCHEMA_HINT
+    + "\n只允许查询上述表;只输出 SQL 本身,不要分号、不要注释、不要解释。"
 )
 
 EXPLAIN_PROMPT = (
@@ -55,6 +66,15 @@ def _validate(sql: str) -> exp.Select:
     return tree
 
 
+def _jsonable(value):
+    """SQL 结果转 JSON 可序列化:Decimal→float、日期→ISO 字符串。"""
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return value
+
+
 def _execute_readonly(tree: exp.Select, user_id: int) -> list[dict]:
     """注入 user_id 过滤 + LIMIT,只读事务执行。"""
     injected = tree.where(f"user_id = {int(user_id)}").limit(MAX_ROWS)
@@ -64,7 +84,7 @@ def _execute_readonly(tree: exp.Select, user_id: int) -> list[dict]:
         conn.execute(text("SET TRANSACTION READ ONLY"))
         result = conn.execute(text(clean_sql))
         cols = list(result.keys())
-        return [dict(zip(cols, row)) for row in result.fetchall()]
+        return [dict(zip(cols, (_jsonable(v) for v in row))) for row in result.fetchall()]
 
 
 def _stats(db: Session, user_id: int, session_id: int, question: str, **kwargs) -> dict:

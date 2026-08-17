@@ -63,6 +63,7 @@ def search(
         db: 数据库会话(测试注入用);缺省自动创建。
         store: MilvusStore(测试注入测试 collection);缺省用生产 collection。
     """
+    
     store = store or MilvusStore()
     store.ensure_collection()
     if not query or not query.strip():

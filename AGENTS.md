@@ -19,14 +19,14 @@ MindHarbor — 面向大学生的 AI 心理咨询与情感陪伴助手课程项�
   - `core/` 配置/安全/数据库/日志(脚手架已就绪)
   - `api/` 路由(`chat`、`auth`、`admin/`、`counselor/` 等)
   - `services/` 业务服务层
-  - `ai/` 对话 `dialogue.py`、情绪 `emotion.py`、日记 `journal.py`、记忆 `memory.py`、Agent `agent.py` + `tools/`(7 工具)+ `rag/`(ingest/search)
+  - `ai/` 对话 `dialogue.py`、情绪 `emotion.py`、日记 `journal.py`、记忆 `memory.py`、Agent `agent.py` + `tools/`(7 工具)+ `rag/`(ingest/search);**咨询师端 Agent**:`counselor.py`/`counselor_tools.py`(独立工具集:学生情绪统计 SQL、学生日记检索、异常学生识别)
   - `models/` SQLAlchemy、`schemas/` Pydantic、`adapters/` 模型适配层
 - 数据:PostgreSQL(业务数据)+ Milvus v3.0.0(向量检索,本机 Docker 端口 19530);chunk 元数据存 PG、向量存 Milvus collection(`knowledge_chunks`,按 chunk id 关联);`journals`↔`emotions` 由 `journal_id` 关联,情绪记录只在 LLM 生成日记时产出。
 
 **铁律(改动前必读)**:
 - 所有 AI 能力只经 `app/adapters/` 访问模型,禁止直连具体供应商。
 - 情绪类别枚举固定:`[anxious, sad, angry, lonely, tired, calm, hopeful]`。
-- SQL Agent(`query_emotion_stats`)只读连接 + SELECT 白名单 + AST 校验。
+- SQL Agent 只读连接 + SELECT 白名单 + AST 校验。学生端 `query_emotion_stats`(仅本人,注入 user_id);咨询师端 `query_student_stats`(可查任意学生/全体,白名单含 `users` 表,权限由 API `require_roles("counselor","admin")` 保证)。
 - 学生端:日记**只读**查看自己的(2026-08-15 更新,`GET /journals/mine`);不可修改;咨询师端可查看所有学生,管理端仅 CRUD。情绪趋势仅咨询师端。
 
 ## 常用命令
@@ -66,7 +66,7 @@ pnpm build                    # tsc -b && vite build
 | 角色 | 范围 |
 |---|---|
 | 前端团队 | 学生端 / 管理端 / 咨询师端全部页面(2026-08-15 移交;接口契约见 `docs/api.md`) |
-| 后端 | API、服务层、AI 编排(RAG/Agent/对话/记忆)、数据访问 |
+| 后端 | API、服务层、AI 编排(RAG/Agent/对话/记忆)、数据访问;咨询师端对话 Agent(学生情绪统计/日记/异常识别) |
 
 > 注意:`frontend/src` 已从仓库移除(交给前端团队),只保留脚手架配置。后端开发不依赖前端。
 

@@ -92,13 +92,30 @@ def test_record_emotion_tool_writes_journal_and_emotion(db, seed_user, seed_sess
 
 def test_search_knowledge_tool_returns_hits(monkeypatch, db, seed_user):
     hits = [ChunkHit(text="考前压力应对:规律作息……", doc_title="考前压力应对", chunk_id=1, score=0.9)]
-    monkeypatch.setattr("app.ai.tools.search_knowledge.rag_search.search", lambda *a, **kw: hits)
+    captured = {}
+
+    def fake_search(query, **kw):
+        captured["query"] = query
+        return hits
+
+    monkeypatch.setattr("app.ai.tools.search_knowledge.rag_search.search", fake_search)
 
     handler = tools_registry.registry.get("search_knowledge").handler
-    result = handler(db, seed_user.id, 1, query="考试压力怎么办")
+    result = handler(db, seed_user.id, 1, query="我想知道考试压力怎么办")
 
     assert result["count"] == 1
     assert result["hits"][0]["title"] == "考前压力应对"
+    # 查询词已精炼:去掉"我想知道/怎么办"等语气词,保留核心检索词
+    assert "我想知道" not in captured["query"]
+    assert "考试压力" in captured["query"]
+
+
+def test_refine_query_extracts_core_terms():
+    from app.ai.tools.search_knowledge import _refine_query
+
+    assert "心理咨询中心" in _refine_query("我想去学校心理咨询中心,请问怎么预约?")
+    assert "请问" not in _refine_query("请问考试焦虑怎么缓解")
+    assert _refine_query("") == ""
 
 
 def test_generate_breathing_tool(db, seed_user):
@@ -269,6 +286,34 @@ def test_agent_run_without_tool_calls(db, seed_user, seed_session, monkeypatch):
     )
     assert cards == []
     assert tool_context == ""
+
+
+def test_agent_run_executes_multiple_tools_in_one_round(db, seed_user, seed_session, monkeypatch):
+    """一轮返回多个 tool_call(如 search_knowledge + speak_voice)→ 全部执行。"""
+
+    calls = []
+
+    def multi_tool(messages, tools, **kw):
+        calls.append(1)
+        if len(calls) == 1:  # 第一轮返回两个 tool_call
+            return (
+                None,
+                [
+                    {"id": "c1", "type": "function", "function": {"name": "generate_breathing", "arguments": "{}"}},
+                    {"id": "c2", "type": "function", "function": {"name": "generate_breathing", "arguments": json.dumps({"exercise": "box"})}},
+                ],
+            )
+        return (None, [])  # 第二轮结束
+
+    monkeypatch.setattr(llm_adapter, "chat_with_tools", multi_tool)
+
+    cards, _ = agent.run(
+        db, seed_user.id, seed_session.id, "帮我放松",
+        system_prompt="你是陪伴助手", context="",
+    )
+    assert len(cards) == 2  # 两个工具都执行
+    assert cards[0]["exercise"] == "478"
+    assert cards[1]["exercise"] == "box"
 
 
 def test_agent_run_max_rounds_guard(db, seed_user, seed_session, monkeypatch):

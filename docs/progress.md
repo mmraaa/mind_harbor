@@ -13,11 +13,19 @@
 
 ## 进行中
 
-### 前端移交(2026-08-15)
+(无)
 
-- 前端开发全部交由团队成员负责;我方 `frontend/src/`(24 文件)已从仓库彻底移除,保留 `frontend/` 脚手架配置(package.json/vite.config.ts/tsconfig.json/index.html 等)。
-- **接口契约**:以 `docs/api.md`(由 `backend/scripts/gen_api_docs.py` 自动生成)为准,含鉴权/端点/schema;团队基于此开发。
-- 待团队成员 push 其前端实现后合并到 main。
+### 心理资源入库(2026-08-15)
+
+- 子代理搜索真实心理资源并入库 `resources` 表:`backend/scripts/seed_resources.py`(幂等,按 title 去重)。
+- 新增 12 条:**书籍 4**(蛤蟆先生/也许你该找个人聊聊/被讨厌的勇气/正念的奇迹)、**文章 4**(澎湃/壹心理/WHO/央视网)、**游戏 4**(Celeste/GRIS/Spiritfarer/Florence);URL 全部真实可访问(豆瓣/Steam/权威媒体),`is_active=True`。
+- 资源表现在 **14 条**。原占位资源清理(2026-08-15):删除"考前压力应对/478 呼吸练习";保留"危机干预热线/校园心理咨询预约流程"改为 `type=求助渠道`,`content` 取自知识文档(24h 热线/三种预约方式),`url=null`。全表 type 统一为中文:求助渠道 2 / 书籍 4 / 文章 4 / 游戏 4。
+
+### 前端合并完成(2026-08-15)
+
+- 团队成员分支 `feature/frontend-tri-role`(commit `d3fc2f0`)已 fast-forward 合并到 main:三角色前端(学生/管理/咨询师页面 + api/stores/styles,29 文件,5447 行)。
+- 验证:`pnpm build` 通过(288KB);dev server 冒烟(首页 + /login 200);后端接口未变。
+- 前端团队可基于 `docs/api.md` 契约继续迭代。
 
 ## 进行中
 
@@ -47,6 +55,48 @@
 - **测试**:74 passed(新增:手动结束生成日记/幂等/403、情绪画像趋势与压力源、稳定模式沉淀、滚动摘要增量)。
 - **API 文档**:生成逻辑落成 `backend/scripts/gen_api_docs.py`(可复用),刷新 `docs/openapi.json`(12 paths)+ `docs/api.md`。
 - **commit**:`2cd0311`(接口+记忆)、后续文档提交。
+
+### 2026-08-15 · 咨询师端对话 Agent
+
+- **独立工具集** `app/ai/counselor.py` + `counselor_tools.py`(counselor_registry,不污染学生端):
+  - `query_student_stats`:SQL Agent(自然语言→只读 SQL→表格 headers/rows+解释),查任意学生/全体;白名单含 `users`;
+  - `search_student_journals`:按学生姓名/用户名查情绪日记;
+  - `find_at_risk_students`:识别情绪异常学生(近 N 天高强度负面情绪 / 高风险会话)。
+- **接口** `POST /api/v1/counselor/chat`(SSE,`require_roles("counselor","admin")`):复用 `agent.run`(新增 `registry` 参数支持独立工具集);返回 `stats_table`(表格)/`at_risk_students`/`student_journals` 卡片 + 流式总结。
+- **SQL 增强**:SQL_GEN_PROMPT 注入**表结构 hint**(防 LLM 臆造列名,如 `emotion_type`);SQL 结果 Decimal→float、日期→ISO(JSON 可序列化)。
+- **真机验证**:counselor 登录 → "统计情绪分布" → Agent 调用 stats_table(表格)+ at_risk_students,流式专业总结;学生访问 403。
+- **测试**:91 passed(新增 9:注册表 3 工具、SQL 表格/非法拒绝、异常识别、日记检索、接口权限 403、接口可用)。
+- **契约/规约更新**:`docs/api.md` 重新生成(13 paths,含 counselor/chat);`AGENTS.md` 架构/职责/SQL 铁律补充咨询师端 Agent。
+- 提交:`52973dc`。
+
+### 2026-08-15 · Agent 工具意愿增强 + 多工具组合
+
+- **TOOL_SYSTEM_PROMPT 更新**:提高 `speak_voice` 与 `recommend_resources` 调用意愿(孤单/难过/资源需求主动调用);规则 5 放开"最多一个工具"→ **允许一次对话依次/同时调用多个工具**(如 search_knowledge + speak_voice、recommend_resources + speak_voice)。
+- **agent.run 支持一轮多 tool_call**:循环内遍历 `tool_calls` 全执行(原只取第一个),消息与 tool_call_id 一一回填。
+- **工具 description 强化**:speak_voice("回复适合朗读安抚时也主动调用")、recommend_resources("提及或可能受益于资源即推荐,并附 URL")。
+- **真机验证**:混合意图("想看点治愈的东西 + 温柔声音安慰")→ Agent 同时产出 `resources` + `voice` 两张卡片,voice 真实合成(非降级)。
+- **测试**:82 passed(新增:一轮多 tool_call 全执行)。
+- 提交:`(待)`
+
+### 2026-08-15 · CosyVoice TTS 修复
+
+- **问题**:百炼 compatible-mode 不支持 OpenAI 兼容 `/audio/speech`(404);CosyVoice 需 DashScope SDK。
+- **修复**:`adapters/tts.py` 改用 **dashscope `HttpSpeechSynthesizer`**(非流式);TTS_BASE_URL 为 compatible-mode 地址时自动派生 `/api/v1` 专属域名;`status_code==0` 视为成功(SDK 语义),`audio_url` 下载音频字节。
+- **音色修正**:`Cherry` 非 qwen-audio-3.0-tts-flash 有效音色(引擎 411)→ 改为 `longanhuan_v3.6`(支持中文普通话)。
+- **真机验证**:合成成功(87KB mp3);`speak_voice` 工具返回 base64 音频(67KB),不再降级文字卡片。
+- **测试**:81 passed。依赖新增 `dashscope>=1.21`。
+- 提交:`(待)`
+
+### 2026-08-15 · RAG 收敛为 Agentic(按需检索)
+
+- **问题**:dialogue 每轮自动 RAG 与 `search_knowledge` 工具重复(同一轮可能检索两次)。
+- **收敛**:移除 dialogue 自动 RAG,**检索唯一入口 = Agent 的 `search_knowledge` 工具**(LLM function-calling 按需调用);工具卡片随助手消息持久化(`tool_cards`)。
+- **提高工具倾向**:TOOL_SYSTEM_PROMPT 强指示"知识类问题必须调用 search_knowledge";工具决策 temperature 0.2→0.1。
+- **查询词精炼**:`_refine_query` 去问句语气词/停用词(请问/我想/怎么办等),提取核心检索词再走 RRF 混合检索。
+- **真机验证**:知识类问题("学校心理咨询中心怎么预约")→ Agent 自动调用工具 → knowledge 卡片(命中 3 条来源);普通对话零检索。
+- **测试**:81 passed(新增:工具查询精炼断言、refine 函数;调整 dialogue 无自动 RAG 断言)。
+- **前端契约变化**:`tool_card` 来源卡片类型由 `sources` 改为 `knowledge`(含 hits),且仅在 Agent 检索时出现——需同步前端团队。
+- 提交:`(待)`
 
 ### 2026-08-15 · 历史会话接口变更:按状态分组 + 已结束不可续聊
 
