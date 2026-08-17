@@ -25,9 +25,35 @@ export type ChatMessage = {
   created_at: string
 }
 
+export type KnowledgeHit = { title: string; text: string }
+
+export type ResourceItem = {
+  id: number
+  title: string
+  type?: string
+  content?: string
+  url?: string | null
+}
+
 export type ToolCardPayload = {
   type: string
-  sources?: { title: string; text: string }[]
+  /** search_knowledge */
+  hits?: KnowledgeHit[]
+  count?: number
+  /** legacy */
+  sources?: KnowledgeHit[]
+  /** recommend_resources */
+  resources?: ResourceItem[]
+  /** speak_voice */
+  text?: string
+  url?: string
+  audio_b64?: string | null
+  format?: string
+  degraded?: boolean
+  note?: string
+  /** crisis */
+  hotline?: string
+  /** breathing / misc */
   steps?: string[]
   title?: string
   desc?: string

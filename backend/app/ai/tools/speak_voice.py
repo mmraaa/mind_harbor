@@ -1,10 +1,8 @@
-"""speak_voice 工具:流式语音陪伴(TTS 合成,base64 随卡片返回)。
+"""speak_voice 工具:流式语音陪伴(TTS 合成,返回可播放 URL)。
 
-TTS 供应商适配未完成(阿里云百炼 CosyVoice 为异步任务 API)时,
-降级为纯文本卡片,保证对话闭环不因语音不可用而中断。
+TTS 供应商适配未完成时降级为纯文本卡片,保证对话闭环不因语音不可用而中断。
 """
 
-import base64
 import logging
 
 from sqlalchemy.orm import Session
@@ -18,22 +16,23 @@ MAX_TTS_CHARS = 200
 
 
 def _speak(db: Session, user_id: int, session_id: int, text: str, **kwargs) -> dict:
+    snippet = text[:MAX_TTS_CHARS]
     try:
-        audio = tts.synthesize(text[:MAX_TTS_CHARS])
+        result = tts.synthesize_with_url(snippet)
     except Exception:  # noqa: BLE001  TTS 未配置/供应商不兼容 → 降级文本卡片
         logger.warning("TTS 合成失败,降级为文本卡片(详见日志)")
         return {
             "type": "voice",
-            "text": text[:MAX_TTS_CHARS],
-            "audio_b64": None,
+            "text": snippet,
+            "url": None,
             "format": "mp3",
             "degraded": True,
             "note": "语音暂不可用,先看文字版",
         }
     return {
         "type": "voice",
-        "text": text[:MAX_TTS_CHARS],
-        "audio_b64": base64.b64encode(audio).decode(),
+        "text": snippet,
+        "url": result["url"],
         "format": "mp3",
     }
 

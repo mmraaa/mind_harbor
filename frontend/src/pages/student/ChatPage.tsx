@@ -1,6 +1,5 @@
 import { Bookmark, BookmarkCheck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { addFavorite, removeFavorite } from '../../api/favorites'
 import {
   endSession as endSessionApi,
@@ -12,81 +11,10 @@ import {
 } from '../../api/chat'
 import { getErrorMessage } from '../../api/client'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
-import { getBreathingExercise } from '../../data/breathing'
-import { toUiMessages, useChatStore, type UiCard, type UiMessage } from '../../stores/chat'
+import { ToolCards } from '../../components/ToolCards'
+import { toUiMessages, useChatStore, type UiMessage } from '../../stores/chat'
 
 const SUGGESTIONS = ['最近考试压力很大，睡不好', '想学一个两分钟的呼吸练习', '校园心理咨询怎么预约？']
-
-function ToolCards({ cards }: { cards: UiCard[] }) {
-  return (
-    <div className="tool-stack">
-      {cards.map((card, idx) => {
-        if (card.kind === 'journal') {
-          const e = card.payload.emotion
-          return (
-            <div className="tool-card tool-card--journal" key={idx}>
-              <h4>本轮情绪日记</h4>
-              <p>
-                {card.payload.summary}
-                {e?.category != null && (
-                  <>
-                    <br />
-                    心情：{e.category}
-                    {e.intensity != null ? ` · ${e.intensity}/10` : ''}
-                  </>
-                )}
-              </p>
-            </div>
-          )
-        }
-
-        const p = card.payload
-        if (p.type === 'sources' && p.sources?.length) {
-          return (
-            <div className="tool-card" key={idx}>
-              <h4>参考来源</h4>
-              {p.sources.slice(0, 3).map((s) => {
-                const excerpt = s.text.length > 120 ? `${s.text.slice(0, 120)}…` : s.text
-                return (
-                  <div key={s.title} style={{ marginBottom: 8 }}>
-                    <strong>{s.title}</strong>
-                    <MarkdownMessage text={excerpt} />
-                  </div>
-                )
-              })}
-            </div>
-          )
-        }
-
-        if (p.type === 'breathing') {
-          const ex = getBreathingExercise(typeof p.exercise === 'string' ? p.exercise : '478')
-          const name = typeof p.name === 'string' ? p.name : ex.name
-          const steps = Array.isArray(p.steps) && p.steps.length ? p.steps : ex.steps
-          return (
-            <div className="tool-card tool-card--breathing" key={idx}>
-              <h4>{name}</h4>
-              <ol>
-                {steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-              <Link className="tool-card__link" to="/student/practice">
-                打开练习台跟随节奏 →
-              </Link>
-            </div>
-          )
-        }
-
-        return (
-          <div className="tool-card" key={idx}>
-            <h4>{p.type || '工具卡片'}</h4>
-            <p>{p.title || p.desc || JSON.stringify(p).slice(0, 160)}</p>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
 
 export default function ChatPage() {
   const sessionId = useChatStore((s) => s.sessionId)

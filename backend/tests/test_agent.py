@@ -213,13 +213,16 @@ def test_query_emotion_stats_rejects_unsafe_sql(bad_sql, db, seed_user, monkeypa
         handler(db, seed_user.id, 1, question="随便")
 
 
-def test_speak_voice_tool_returns_base64(db, seed_user, monkeypatch):
-    monkeypatch.setattr("app.ai.tools.speak_voice.tts.synthesize", lambda text, **kw: b"fake-audio")
+def test_speak_voice_tool_returns_url(db, seed_user, monkeypatch):
+    monkeypatch.setattr(
+        "app.ai.tools.speak_voice.tts.synthesize_with_url",
+        lambda text, **kw: {"audio": b"fake-audio", "url": "https://example.com/voice.mp3"},
+    )
 
     handler = tools_registry.registry.get("speak_voice").handler
     result = handler(db, seed_user.id, 1, text="我在这里陪着你")
 
-    assert result["audio_b64"] == base64.b64encode(b"fake-audio").decode()
+    assert result["url"] == "https://example.com/voice.mp3"
     assert result["text"] == "我在这里陪着你"
 
 
@@ -229,13 +232,13 @@ def test_speak_voice_tool_degrades_when_tts_fails(db, seed_user, monkeypatch):
     def boom(text, **kw):
         raise RuntimeError("TTS 404")
 
-    monkeypatch.setattr("app.ai.tools.speak_voice.tts.synthesize", boom)
+    monkeypatch.setattr("app.ai.tools.speak_voice.tts.synthesize_with_url", boom)
 
     handler = tools_registry.registry.get("speak_voice").handler
     result = handler(db, seed_user.id, 1, text="我在这里陪着你")
 
     assert result["type"] == "voice"
-    assert result["audio_b64"] is None
+    assert result["url"] is None
     assert result["degraded"] is True
     assert result["text"] == "我在这里陪着你"
 
