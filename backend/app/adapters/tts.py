@@ -44,7 +44,12 @@ def _sdk_base_url(base_url: str) -> str:
 
 
 def synthesize(text: str, *, voice: str | None = None) -> bytes:
-    """文本转语音(CosyVoice 非流式),下载并返回音频字节(mp3)。
+    """文本转语音(CosyVoice 非流式),下载并返回音频字节(mp3)。"""
+    return synthesize_with_url(text, voice=voice)["audio"]
+
+
+def synthesize_with_url(text: str, *, voice: str | None = None) -> dict:
+    """文本转语音,返回音频字节与供应商原始 audio_url。
 
     Raises:
         RuntimeError: 配置缺失 / 合成失败(非 200 / 无 audio_url)。
@@ -64,7 +69,6 @@ def synthesize(text: str, *, voice: str | None = None) -> bytes:
     if result is None:
         raise RuntimeError("CosyVoice 返回为空")
 
-    # dashscope SDK 成功时 status_code == 0;出错时非 0 且无 audio_url
     status = getattr(result, "status_code", 0)
     audio_url = getattr(result, "audio_url", None)
     if status != 0 and not audio_url:
@@ -75,4 +79,4 @@ def synthesize(text: str, *, voice: str | None = None) -> bytes:
 
     resp = httpx.get(audio_url, timeout=TTS_TIMEOUT_SECONDS)
     resp.raise_for_status()
-    return resp.content
+    return {"audio": resp.content, "url": audio_url}
