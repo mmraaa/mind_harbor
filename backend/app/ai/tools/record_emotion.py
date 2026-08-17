@@ -30,7 +30,6 @@ def _record(db: Session, user_id: int, session_id: int, **kwargs) -> dict:
         }
     return payload
 
-
 registry.register(
     ToolSpec(
         name="record_emotion",
