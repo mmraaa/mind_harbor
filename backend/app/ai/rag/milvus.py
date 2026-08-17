@@ -80,3 +80,13 @@ class MilvusStore:
         """删除整个 collection(仅测试/重建用)。"""
         if self.has_collection():
             self._client.drop_collection(self.collection)
+
+    def delete_chunks(self, ids: list[int]) -> int:
+        """按 chunk id 删除向量(重建/覆盖入库时用)。"""
+        if not ids:
+            return 0
+        if not self.has_collection():
+            return 0
+        self._client.delete(collection_name=self.collection, ids=ids)
+        self._client.flush(collection_name=self.collection)
+        return len(ids)

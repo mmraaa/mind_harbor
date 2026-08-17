@@ -1,11 +1,9 @@
-"""知识分块(Advanced RAG 切片优化):标题层级感知 + 父子分块(Small-to-Big)。
+"""知识分块:按 markdown 二级标题(##)切分 + Small-to-Big 父子结构。
 
 方案:
-1. 按 markdown 标题树把文档切成「节」——每个节是一个语义单元(父块);
-2. 节内子块注入 `[文档标题 > 节标题]` 上下文前缀,供向量检索(小块精确);
-3. 父块(整节文本)不向量化,检索命中子块后回查父块喂给 LLM,上下文更完整。
-
-`chunk_text` 为旧版窗口分块,保留兼容;新入口是 `chunk_document`。
+1. 每个 `## 节标题` 及其下属内容(含 ### 等更深层级)作为一个语义单元(父块);
+2. 子块注入 `[文档标题 > 节标题]` 前缀供向量检索;
+3. 无 `##` 的文档:整篇正文(去掉一级标题)作为单节 fallback。
 """
 
 import re
@@ -17,13 +15,7 @@ DEFAULT_OVERLAP = 50
 
 @dataclass
 class SemanticChunk:
-    """一个可向量化的子块。
-
-    - `content`:子块文本(带 `[文档 > 节]` 上下文前缀),进 Milvus 检索;
-    - `section`:所属节标题(去 markdown 标记);
-    - `parent_content`:父块(整节)文本,供 Small-to-Big 回查;
-    - `seq`:文档内顺序。
-    """
+    """一个可向量化的子块。"""
 
     content: str
     section: str
@@ -58,62 +50,101 @@ def chunk_text(text: str, max_chars: int = DEFAULT_MAX_CHARS, overlap: int = DEF
     return chunks
 
 
-def chunk_document(
-    text: str, max_chars: int = DEFAULT_MAX_CHARS, overlap: int = DEFAULT_OVERLAP
-) -> list[SemanticChunk]:
-    """标题层级感知的父子分块:返回子块列表,每块含父块文本。"""
+def chunk_document(text: str, max_chars: int = DEFAULT_MAX_CHARS, overlap: int = DEFAULT_OVERLAP) -> list[SemanticChunk]:
+    """按 `##` 二级标题切分;每节一个子块(整节不向量化窗口二次切分)。"""
     if not text or not text.strip():
         return []
-    doc_title, sections = _parse_sections(text)
+
+    doc_title, sections = _parse_h2_sections(text)
+    if not sections:
+        body = _body_without_h1(text)
+        if not body:
+            return []
+        fallback_title = doc_title or "文档"
+        sections = [(fallback_title, body.splitlines())]
+
     result: list[SemanticChunk] = []
-    for path, body_lines in sections:
-        title = " > ".join(filter(None, path)) or doc_title or "文档"
+    for section_title, body_lines in sections:
         parent_content = "\n".join(body_lines).strip()
         if not parent_content:
             continue
-        section = path[-1] if len(path) > 1 else (doc_title or "")
-        full = f"[{title}]\n{parent_content}"
-        if len(full) <= max_chars:
-            result.append(SemanticChunk(content=full, section=section, parent_content=parent_content, seq=len(result)))
-        else:
+        path = " > ".join(filter(None, [doc_title, section_title]))
+        full = f"[{path}]\n{parent_content}"
+        if len(full) > max_chars:
             for piece in _window_split(full, max_chars, overlap):
-                result.append(SemanticChunk(content=piece, section=section, parent_content=parent_content, seq=len(result)))
+                result.append(
+                    SemanticChunk(content=piece, section=section_title, parent_content=parent_content, seq=len(result))
+                )
+        else:
+            result.append(
+                SemanticChunk(content=full, section=section_title, parent_content=parent_content, seq=len(result))
+            )
     return result
 
 
-def _parse_sections(text: str) -> tuple[str | None, list[tuple[list[str], list[str]]]]:
-    """解析 markdown 标题树 → (文档标题, [(标题路径, 节正文行), ...])。
+def _body_without_h1(text: str) -> str:
+    lines: list[str] = []
+    skipped_h1 = False
+    for line in text.splitlines():
+        if not skipped_h1 and re.match(r"^#\s+(.+)$", line.strip()) and not re.match(r"^##\s+", line.strip()):
+            skipped_h1 = True
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
 
-    标题路径 = [文档标题, ...节标题];节标题层级用栈维护。
+
+def _parse_h2_sections(text: str) -> tuple[str | None, list[tuple[str, list[str]]]]:
+    """按 `##` 切分 → (文档标题, [(节标题, 正文行), ...])。
+
+    - `#` 一级标题 → 文档标题;
+    - `##` → 新节边界(### 及以下保留在节内);
+    - 首个 `##` 前的正文并入第一节(若存在)。
     """
     doc_title: str | None = None
-    stack: list[tuple[int, str]] = []  # (标题级别, 标题)
-    sections: list[tuple[list[str], list[str]]] = []
-    current: list[str] = []
+    sections: list[tuple[str, list[str]]] = []
+    preamble: list[str] = []
+    current_title: str | None = None
+    current_lines: list[str] = []
+    seen_h2 = False
 
     def flush() -> None:
-        if current or stack:
-            path = [doc_title] + [t for _, t in stack] if doc_title else [t for _, t in stack]
-            sections.append((path, list(current)))  # 存副本,避免 clear 误清
-            current.clear()
+        nonlocal current_title, current_lines
+        if current_title is None:
+            if current_lines:
+                preamble.extend(current_lines)
+            current_lines = []
+            return
+        sections.append((current_title, list(current_lines)))
+        current_lines = []
 
     for line in text.splitlines():
-        m = re.match(r"^(#{1,4})\s+(.+)$", line.strip())
-        if m:
-            level, title = len(m.group(1)), m.group(2).strip()
-            if level == 1:
-                flush()
-                doc_title = title
-                stack.clear()
-            else:
-                flush()
-                # 同级/更深级标题:弹出栈顶级别 >= 新级别的项(替换兄弟节点)
-                while stack and stack[-1][0] >= level:
-                    stack.pop()
-                stack.append((level, title))
+        h1 = re.match(r"^#\s+(.+)$", line.strip())
+        h2 = re.match(r"^##\s+(.+)$", line.strip())
+        if h1 and not h2:
+            flush()
+            doc_title = h1.group(1).strip()
+            current_title = None
+            current_lines = []
+            continue
+        if h2:
+            flush()
+            seen_h2 = True
+            current_title = h2.group(1).strip()
+            current_lines = []
+            continue
+        if current_title is None:
+            preamble.append(line)
         else:
-            current.append(line)
+            current_lines.append(line)
+
     flush()
+
+    if preamble and sections:
+        first_title, first_lines = sections[0]
+        sections[0] = (first_title, preamble + first_lines)
+    elif preamble and not sections and not seen_h2:
+        return doc_title, []
+
     return doc_title, sections
 
 

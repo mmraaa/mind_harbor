@@ -74,8 +74,13 @@ function ResourcesCard({ payload }: { payload: ToolCardPayload }) {
             </div>
             {item.content ? <p>{item.content}</p> : null}
             {item.url ? (
-              <a href={item.url} target="_blank" rel="noreferrer noopener">
-                查看详情
+              <a
+                className="tool-resource-list__url"
+                href={item.url}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                {item.url}
               </a>
             ) : null}
           </li>

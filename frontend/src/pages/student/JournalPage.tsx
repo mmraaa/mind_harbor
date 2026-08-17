@@ -1,20 +1,71 @@
+import { CalendarDays, LockKeyhole, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getMyJournal, listMyJournals, type JournalItem } from '../../api/journals'
 import { getErrorMessage } from '../../api/client'
+import { emotionDisplay } from '../../data/emotions'
 
-function formatTime(iso?: string) {
-  if (!iso) return ''
+function entryWhen(iso?: string) {
+  if (!iso) return { day: '--', month: '', time: '', year: '' }
   try {
-    return new Date(iso).toLocaleString('zh-CN', {
-      month: 'numeric',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
+    const date = new Date(iso)
+    return {
+      day: String(date.getDate()).padStart(2, '0'),
+      month: new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(date),
+      time: new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(date),
+      year: String(date.getFullYear()),
+    }
   } catch {
-    return iso
+    return { day: '--', month: iso, time: '', year: '' }
   }
+}
+
+function DateRail({ iso }: { iso?: string }) {
+  const when = entryWhen(iso)
+  return (
+    <aside className="diary-date-rail" aria-hidden="true">
+      <span>NOW</span>
+      <strong>{when.day}</strong>
+      <i />
+      <small>{when.year}</small>
+    </aside>
+  )
+}
+
+function JournalEntryRow({ item }: { item: JournalItem }) {
+  const when = entryWhen(item.created_at)
+  const emo = emotionDisplay(item.emotion?.category)
+
+  return (
+    <Link to={`/student/journals/${item.id}`} className="diary-entry diary-entry--link">
+      <div className="diary-entry__date">
+        <span aria-hidden>{emo.emoji}</span>
+        <div>
+          <strong>{when.month}</strong>
+          <small>{when.time}</small>
+        </div>
+      </div>
+      <div className="diary-entry__body">
+        <div className="diary-entry__meta">
+          <span>{emo.label}</span>
+          <span>
+            <LockKeyhole size={13} aria-hidden />
+            只读 · 会话生成
+          </span>
+        </div>
+        <h3 className="diary-entry__title">{item.summary || `日记 #${item.id}`}</h3>
+        {item.content ? <p>{item.content.length > 160 ? `${item.content.slice(0, 160)}…` : item.content}</p> : null}
+        <div className="diary-entry__footer">
+          <div className="diary-entry__tags">
+            {item.emotion?.intensity != null && <span>强度 {item.emotion.intensity}/10</span>}
+            {item.mood_score != null && <span>mood {item.mood_score}</span>}
+            {item.emotion?.stress_source && <span>#{item.emotion.stress_source}</span>}
+          </div>
+          <span className="diary-entry__cta">阅读全文 →</span>
+        </div>
+      </div>
+    </Link>
+  )
 }
 
 export default function JournalPage() {
@@ -39,43 +90,65 @@ export default function JournalPage() {
     }
   }, [])
 
+  const latest = items[0]?.created_at
+
   return (
-    <div>
-      <header className="page-header">
-        <div>
-          <p className="page-header__eyebrow">JOURNAL</p>
-          <h1>情绪日记</h1>
-          <p className="page-header__description">
-            由会话结束时自动生成，只读查看，不可修改。
-          </p>
-        </div>
-      </header>
+    <div className="journal-workspace">
+      <div className="diary-scene">
+        <DateRail iso={latest} />
+        <div className="diary-paper">
+          <header className="page-header">
+            <div>
+              <p className="page-header__eyebrow">心情日记</p>
+              <h1>把今天轻轻放下来</h1>
+              <p className="page-header__description">
+                每次结束陪伴会话后，MindHarbor 会为你留下一段情绪记录。只读查看，不可修改。
+              </p>
+            </div>
+          </header>
 
-      {error && (
-        <p style={{ color: 'var(--danger)', marginBottom: 12, fontFamily: 'var(--font-ui)' }}>{error}</p>
-      )}
+          <div className="diary-intro">
+            <span aria-hidden>“</span>
+            <p>不必把一天总结得很有道理，只需要留下一点真实。</p>
+          </div>
 
-      {loading ? (
-        <p style={{ color: 'var(--muted)' }}>加载中…</p>
-      ) : items.length === 0 ? (
-        <p style={{ color: 'var(--muted)' }}>还没有日记。在陪伴页结束会话后会出现在这里。</p>
-      ) : (
-        <div className="list-panel">
-          {items.map((j) => (
-            <Link key={j.id} to={`/student/journals/${j.id}`} className="list-row">
-              <div>
-                <h3>{j.summary || `日记 #${j.id}`}</h3>
-                <p>
-                  {j.emotion?.category ? `${j.emotion.category}` : '情绪未标注'}
-                  {j.emotion?.intensity != null ? ` · ${j.emotion.intensity}/10` : ''}
-                  {j.mood_score != null ? ` · mood ${j.mood_score}` : ''}
-                </p>
+          {error && (
+            <p className="inline-state" role="alert">
+              {error}
+            </p>
+          )}
+
+          {loading ? (
+            <p className="empty-state">正在翻开你的私密日记…</p>
+          ) : items.length === 0 ? (
+            <p className="empty-state">还没有日记。在陪伴页结束会话后，记录会出现在这里。</p>
+          ) : (
+            <section className="diary-list" aria-label="情绪日记时间轴">
+              <div className="section-heading">
+                <div>
+                  <p className="section-kicker">最近记录</p>
+                  <h2>你已经认真看见自己 {items.length} 次</h2>
+                </div>
+                <span className="diary-badge">
+                  <Sparkles size={14} aria-hidden />
+                  自动生成
+                </span>
               </div>
-              <span className="time">{formatTime(j.created_at)}</span>
-            </Link>
-          ))}
+
+              <div className="diary-timeline">
+                {items.map((j) => (
+                  <JournalEntryRow key={j.id} item={j} />
+                ))}
+              </div>
+
+              <p className="diary-ending">
+                <CalendarDays size={16} aria-hidden />
+                每一次记录，都是在告诉自己：我的感受值得被看见。
+              </p>
+            </section>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -109,42 +182,72 @@ export function JournalDetailPage() {
     }
   }, [journalId])
 
-  return (
-    <div>
-      <header className="page-header">
-        <div>
-          <p className="page-header__eyebrow">JOURNAL</p>
-          <h1>日记详情</h1>
-          <p className="page-header__description">
-            <Link to="/student/journals" style={{ color: 'var(--sage-dark)' }}>
-              ← 返回列表
-            </Link>
-          </p>
-        </div>
-      </header>
+  const when = entryWhen(item?.created_at)
+  const emo = emotionDisplay(item?.emotion?.category)
 
-      {loading && <p style={{ color: 'var(--muted)' }}>加载中…</p>}
-      {error && (
-        <p style={{ color: 'var(--danger)', fontFamily: 'var(--font-ui)' }}>{error}</p>
-      )}
-      {item && (
-        <article className="card-item" style={{ maxWidth: 720 }}>
-          <h3>{item.summary}</h3>
-          <p style={{ color: 'var(--muted)', marginTop: 6 }}>
-            {formatTime(item.created_at)}
-            {item.emotion?.category ? ` · ${item.emotion.category}` : ''}
-            {item.emotion?.intensity != null ? ` · ${item.emotion.intensity}/10` : ''}
-            {item.mood_score != null ? ` · mood ${item.mood_score}` : ''}
-          </p>
-          <p style={{ marginTop: 16, whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>{item.content}</p>
-          {(item.emotion?.stress_source || item.emotion?.support_need) && (
-            <div style={{ marginTop: 16, color: 'var(--muted)', fontSize: '0.9rem' }}>
-              {item.emotion.stress_source && <p>压力来源：{item.emotion.stress_source}</p>}
-              {item.emotion.support_need && <p>支持需求：{item.emotion.support_need}</p>}
+  return (
+    <div className="journal-workspace">
+      <div className="diary-scene">
+        <DateRail iso={item?.created_at} />
+        <article className="diary-paper diary-paper--detail">
+          <header className="page-header">
+            <div>
+              <p className="page-header__eyebrow">日记详情</p>
+              <h1>{item?.summary || '情绪日记'}</h1>
+              <p className="page-header__description">
+                <Link to="/student/journals" className="diary-back">
+                  ← 返回列表
+                </Link>
+              </p>
             </div>
+          </header>
+
+          {loading && <p className="empty-state">加载中…</p>}
+          {error && (
+            <p className="inline-state" role="alert">
+              {error}
+            </p>
+          )}
+
+          {item && (
+            <>
+              <div className="diary-detail-meta">
+                <span className="diary-detail-meta__emoji" aria-hidden>
+                  {emo.emoji}
+                </span>
+                <div>
+                  <strong>{when.month}</strong>
+                  <small>
+                    {when.time}
+                    {item.emotion?.intensity != null ? ` · 强度 ${item.emotion.intensity}/10` : ''}
+                    {item.mood_score != null ? ` · mood ${item.mood_score}` : ''}
+                  </small>
+                </div>
+                <span className="chip">{emo.label}</span>
+              </div>
+
+              <div className="diary-detail-body">{item.content || item.summary}</div>
+
+              {(item.emotion?.stress_source || item.emotion?.support_need) && (
+                <div className="diary-detail-aside">
+                  {item.emotion.stress_source && (
+                    <p>
+                      <strong>压力来源</strong>
+                      {item.emotion.stress_source}
+                    </p>
+                  )}
+                  {item.emotion.support_need && (
+                    <p>
+                      <strong>支持需求</strong>
+                      {item.emotion.support_need}
+                    </p>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </article>
-      )}
+      </div>
     </div>
   )
 }

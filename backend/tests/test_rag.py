@@ -203,21 +203,32 @@ def test_search_small_to_big_returns_parent_context(db, milvus_store, patch_embe
     assert top.context in top.text or "考试焦虑是" in top.text
 
 
-def test_chunk_document_respects_section_titles():
-    """标题感知分块:每节一个子块,content 带 [文档 > 节] 前缀,parent_content 为整节。"""
+def test_chunk_document_splits_on_h2_only():
+    """按 ## 切分:每节一块,### 及以下保留在节内。"""
     doc = """# 心理中心
-### 一、预约流程
+## 预约流程
 线上预约,等待短信确认。
-### 二、值班安排
+### 细节说明
+短信会在 24 小时内发送。
+## 值班安排
 周一至周五 9:00-17:00。"""
     chunks = chunk_document(doc)
     assert len(chunks) == 2
-    assert "[心理中心 > 一、预约流程]" in chunks[0].content
+    assert "[心理中心 > 预约流程]" in chunks[0].content
     assert "预约流程" in chunks[0].section
-    assert "线上预约,等待短信确认。" in chunks[0].parent_content
-    assert "[心理中心 > 二、值班安排]" in chunks[1].content
+    assert "细节说明" in chunks[0].parent_content
+    assert "短信会在 24 小时内发送。" in chunks[0].parent_content
+    assert "[心理中心 > 值班安排]" in chunks[1].content
     assert "周一至周五 9:00-17:00。" in chunks[1].parent_content
-    assert chunks[0].parent_content != chunks[1].parent_content  # 各节独立父块
+    assert chunks[0].parent_content != chunks[1].parent_content
+
+
+def test_chunk_document_fallback_without_h2():
+    """无 ## 时整篇正文作为单节。"""
+    chunks = chunk_document(SAMPLE_DOC)
+    assert len(chunks) == 1
+    assert "考试焦虑应对" in chunks[0].content
+    assert "建议预约校内心理咨询" in chunks[0].parent_content
 
 
 # ---------- Milvus 封装 ----------
