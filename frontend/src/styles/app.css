@@ -1844,6 +1844,61 @@ a.tool-card__breathing-cta {
   border-left: 2px solid var(--archive-ink-fade);
 }
 
+.tide-session-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tide-session-tabs__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.tide-session-tabs__btn:hover {
+  border-color: var(--sky);
+  color: var(--ink);
+}
+
+.tide-session-tabs__btn--active {
+  border-color: rgba(111, 143, 124, 0.45);
+  background: rgba(230, 238, 231, 0.85);
+  color: var(--sage-dark);
+}
+
+.tide-session-tabs__count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.tide-session-more {
+  width: 100%;
+  margin-top: 10px;
+  justify-content: center;
+}
+
+.tide-session-more--done {
+  margin-top: 10px;
+  text-align: center;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
 .tide-session-group__title {
   display: flex;
   align-items: center;

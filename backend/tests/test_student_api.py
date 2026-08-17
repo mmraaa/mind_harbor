@@ -46,8 +46,8 @@ def test_register_short_password_rejected(client):
 # ---------- 会话列表与历史 ----------
 
 
-def test_sessions_list_grouped_by_status_and_only_own(client, seed_user, db):
-    """会话列表按状态分组(active/closed),且只返回本人的。"""
+def test_sessions_list_paginated_by_status_and_only_own(client, seed_user, db):
+    """会话列表按 status 分页，且只返回本人的。"""
     other = db.query(User).filter_by(username="stu2").first()
     if other is None:
         other = User(role="student", username="stu2", name="他人", password_hash="x")
@@ -59,12 +59,50 @@ def test_sessions_list_grouped_by_status_and_only_own(client, seed_user, db):
     db.commit()
 
     token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
-    r = client.get("/api/v1/chat/sessions", headers={"Authorization": f"Bearer {token}"})
+    h = {"Authorization": f"Bearer {token}"}
 
+    r_active = client.get("/api/v1/chat/sessions?status=active", headers=h)
+    assert r_active.status_code == 200
+    active = r_active.json()
+    assert active["total"] == 1
+    assert [s["title"] for s in active["items"]] == ["我的进行中"]
+    assert active["has_more"] is False
+
+    r_closed = client.get("/api/v1/chat/sessions?status=closed", headers=h)
+    assert r_closed.status_code == 200
+    closed = r_closed.json()
+    assert closed["total"] == 1
+    assert [s["title"] for s in closed["items"]] == ["我的已结束"]
+
+
+def test_sessions_list_pagination(client, seed_user, db):
+    for i in range(25):
+        db.add(ChatSession(user_id=seed_user.id, title=f"进行中-{i}"))
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
+    h = {"Authorization": f"Bearer {token}"}
+
+    p1 = client.get("/api/v1/chat/sessions?status=active&page=1&page_size=20", headers=h).json()
+    assert p1["total"] == 25
+    assert len(p1["items"]) == 20
+    assert p1["has_more"] is True
+
+    p2 = client.get("/api/v1/chat/sessions?status=active&page=2&page_size=20", headers=h).json()
+    assert len(p2["items"]) == 5
+    assert p2["has_more"] is False
+
+
+def test_get_session_meta(client, seed_user, db):
+    s = ChatSession(user_id=seed_user.id, title="单条", status="closed")
+    db.add(s)
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
+    r = client.get(f"/api/v1/chat/sessions/{s.id}", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
-    data = r.json()
-    assert [s["title"] for s in data["active"]] == ["我的进行中"]
-    assert [s["title"] for s in data["closed"]] == ["我的已结束"]
+    assert r.json()["title"] == "单条"
+    assert r.json()["status"] == "closed"
 
 
 def test_chat_rejects_continued_closed_session(client, seed_user, db):

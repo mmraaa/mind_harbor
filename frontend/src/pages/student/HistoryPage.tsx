@@ -1,16 +1,22 @@
 import { Anchor, MessageCircle } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   listMessages,
-  listSessions,
+  listSessionsPage,
+  SESSION_PAGE_SIZE,
   type ChatMessage,
   type ChatSession,
-  type SessionListGrouped,
+  type SessionStatusFilter,
 } from '../../api/chat'
 import { getErrorMessage } from '../../api/client'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
 import { useChatStore } from '../../stores/chat'
+
+const TAB_LABELS: Record<SessionStatusFilter, string> = {
+  active: '进行中',
+  closed: '已结束',
+}
 
 function formatTime(iso: string) {
   try {
@@ -67,44 +73,6 @@ function SessionRow({
         </span>
       </button>
     </li>
-  )
-}
-
-function SessionGroup({
-  title,
-  count,
-  items,
-  activeId,
-  currentSessionId,
-  onSelect,
-}: {
-  title: string
-  count: number
-  items: ChatSession[]
-  activeId: number | null
-  currentSessionId: number | null
-  onSelect: (id: number) => void
-}) {
-  if (items.length === 0) return null
-
-  return (
-    <section className="tide-session-group">
-      <h2 className="tide-session-group__title">
-        {title}
-        <span className="tide-session-group__count">{count}</span>
-      </h2>
-      <ul className="tide-session-list">
-        {items.map((s) => (
-          <SessionRow
-            key={s.id}
-            session={s}
-            active={activeId === s.id}
-            isCurrent={currentSessionId === s.id}
-            onSelect={onSelect}
-          />
-        ))}
-      </ul>
-    </section>
   )
 }
 
@@ -177,33 +145,81 @@ export default function HistoryPage() {
   const openSession = useChatStore((s) => s.openSession)
   const currentSessionId = useChatStore((s) => s.sessionId)
 
-  const [grouped, setGrouped] = useState<SessionListGrouped>({ active: [], closed: [] })
+  const [tab, setTab] = useState<SessionStatusFilter>('active')
+  const [items, setItems] = useState<ChatSession[]>([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [hasMore, setHasMore] = useState(false)
+  const [tabTotals, setTabTotals] = useState<Record<SessionStatusFilter, number | null>>({
+    active: null,
+    closed: null,
+  })
+  const [catalogReady, setCatalogReady] = useState(false)
+
   const [activeId, setActiveId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [replaying, setReplaying] = useState(false)
   const [error, setError] = useState('')
 
-  const allSessions = useMemo(
-    () => [...grouped.active, ...grouped.closed],
-    [grouped.active, grouped.closed],
+  const activeSession = useMemo(
+    () => items.find((s) => s.id === activeId) ?? null,
+    [items, activeId],
   )
 
-  const activeSession = useMemo(
-    () => allSessions.find((s) => s.id === activeId) ?? null,
-    [allSessions, activeId],
+  const fetchPage = useCallback(
+    async (status: SessionStatusFilter, pageNum: number, append: boolean) => {
+      const data = await listSessionsPage(status, pageNum, SESSION_PAGE_SIZE)
+      setItems((prev) => (append ? [...prev, ...data.items] : data.items))
+      setTotal(data.total)
+      setPage(data.page)
+      setHasMore(data.has_more)
+      setTabTotals((prev) => ({ ...prev, [status]: data.total }))
+      if (!append && data.items.length > 0) {
+        setActiveId((current) => {
+          if (current != null && data.items.some((s) => s.id === current)) return current
+          return data.items[0].id
+        })
+      } else if (!append && data.items.length === 0) {
+        setActiveId(null)
+        setMessages([])
+      }
+      return data
+    },
+    [],
   )
 
   useEffect(() => {
     let alive = true
     ;(async () => {
       try {
-        const data = await listSessions()
+        const [activePeek, closedPeek] = await Promise.all([
+          listSessionsPage('active', 1, 1),
+          listSessionsPage('closed', 1, 1),
+        ])
         if (!alive) return
-        setGrouped(data)
-        const first = data.active[0] ?? data.closed[0]
-        if (first) setActiveId(first.id)
+        setTabTotals({ active: activePeek.total, closed: closedPeek.total })
+      } catch (err) {
+        if (alive) setError(getErrorMessage(err, '无法加载会话统计'))
+      } finally {
+        if (alive) setCatalogReady(true)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!catalogReady) return
+    let alive = true
+    setLoading(true)
+    setError('')
+    ;(async () => {
+      try {
+        await fetchPage(tab, 1, false)
       } catch (err) {
         if (alive) setError(getErrorMessage(err, '无法加载会话列表'))
       } finally {
@@ -213,7 +229,7 @@ export default function HistoryPage() {
     return () => {
       alive = false
     }
-  }, [])
+  }, [tab, catalogReady, fetchPage])
 
   useEffect(() => {
     if (activeId == null) return
@@ -234,6 +250,19 @@ export default function HistoryPage() {
     }
   }, [activeId])
 
+  async function loadMore() {
+    if (!hasMore || loadingMore) return
+    setLoadingMore(true)
+    setError('')
+    try {
+      await fetchPage(tab, page + 1, true)
+    } catch (err) {
+      setError(getErrorMessage(err, '无法加载更多会话'))
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
   async function openInChat(sessionId: number) {
     setReplaying(true)
     setError('')
@@ -247,7 +276,8 @@ export default function HistoryPage() {
     }
   }
 
-  const empty = grouped.active.length === 0 && grouped.closed.length === 0
+  const bothEmpty =
+    catalogReady && tabTotals.active === 0 && tabTotals.closed === 0
 
   return (
     <div className="archive-page archive-page--tide">
@@ -263,9 +293,9 @@ export default function HistoryPage() {
 
       {error && <p className="archive-alert">{error}</p>}
 
-      {loading ? (
+      {!catalogReady || (loading && items.length === 0 && !bothEmpty) ? (
         <p className="archive-loading">正在打开档案…</p>
-      ) : empty ? (
+      ) : bothEmpty ? (
         <div className="archive-empty archive-empty--tide">
           <Anchor size={32} strokeWidth={1.4} aria-hidden />
           <h2>还没有对话记录</h2>
@@ -277,22 +307,68 @@ export default function HistoryPage() {
       ) : (
         <div className="archive-grid">
           <div className="tide-index">
-            <SessionGroup
-              title="进行中"
-              count={grouped.active.length}
-              items={grouped.active}
-              activeId={activeId}
-              currentSessionId={currentSessionId}
-              onSelect={setActiveId}
-            />
-            <SessionGroup
-              title="已结束"
-              count={grouped.closed.length}
-              items={grouped.closed}
-              activeId={activeId}
-              currentSessionId={currentSessionId}
-              onSelect={setActiveId}
-            />
+            <div className="tide-session-tabs" role="tablist" aria-label="会话状态">
+              {(['active', 'closed'] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === key}
+                  className={`tide-session-tabs__btn${tab === key ? ' tide-session-tabs__btn--active' : ''}`}
+                  onClick={() => {
+                    if (tab !== key) setTab(key)
+                  }}
+                >
+                  {TAB_LABELS[key]}
+                  {tabTotals[key] != null ? (
+                    <span className="tide-session-tabs__count">{tabTotals[key]}</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+
+            <section className="tide-session-group">
+              <h2 className="tide-session-group__title">
+                {TAB_LABELS[tab]}
+                <span className="tide-session-group__count">{total}</span>
+              </h2>
+
+              {loading && items.length === 0 ? (
+                <p className="archive-loading">正在载入…</p>
+              ) : items.length === 0 ? (
+                <p className="archive-empty__text">
+                  {tab === 'active' ? '暂无进行中的对话。' : '暂无已结束的对话。'}
+                </p>
+              ) : (
+                <>
+                  <ul className="tide-session-list">
+                    {items.map((s) => (
+                      <SessionRow
+                        key={s.id}
+                        session={s}
+                        active={activeId === s.id}
+                        isCurrent={currentSessionId === s.id}
+                        onSelect={setActiveId}
+                      />
+                    ))}
+                  </ul>
+                  {hasMore ? (
+                    <button
+                      type="button"
+                      className="ghost-button tide-session-more"
+                      disabled={loadingMore}
+                      onClick={() => void loadMore()}
+                    >
+                      {loadingMore ? '加载中…' : `加载更多（${items.length}/${total}）`}
+                    </button>
+                  ) : items.length > 0 && total > items.length ? (
+                    <p className="tide-session-more tide-session-more--done">
+                      已显示全部 {total} 条
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </section>
           </div>
 
           <PortholePreview

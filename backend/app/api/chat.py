@@ -8,7 +8,7 @@ type 枚举:text(回复增量/整段)、tool_card(工具卡片)、journal(会话
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -29,38 +29,66 @@ def _format_event(evt: dict) -> str:
     return f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
 
 
+def _session_item(s: ChatSession) -> dict:
+    return {
+        "id": s.id,
+        "title": s.title,
+        "summary": s.summary,
+        "started_at": s.started_at.isoformat() if s.started_at else None,
+        "risk_level": s.risk_level,
+        "status": s.status,
+    }
+
+
 @router.get("/sessions")
 def list_sessions(
+    status: str = Query(..., pattern="^(active|closed)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """我的会话列表,按状态分组(倒序,各最多 50 条):
+    """我的会话列表（分页，按状态筛选）。
 
-    - `active`:进行中(可继续对话);
-    - `closed`:已结束(只能浏览历史,不可续聊——后端在 POST /chat 校验)。
+    - `status=active`：进行中（可继续对话）；
+    - `status=closed`：已结束（只读回放）。
     """
+    q = db.query(ChatSession).filter_by(user_id=user.id)
+    if status == "closed":
+        q = q.filter(ChatSession.status == "closed")
+    else:
+        q = q.filter(ChatSession.status != "closed")
+
+    total = q.count()
     rows = (
-        db.query(ChatSession)
-        .filter_by(user_id=user.id)
-        .order_by(ChatSession.id.desc())
-        .limit(100)
+        q.order_by(ChatSession.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
         .all()
     )
+    return {
+        "status": status,
+        "items": [_session_item(s) for s in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": page * page_size < total,
+    }
 
-    def _item(s: ChatSession) -> dict:
-        return {
-            "id": s.id,
-            "title": s.title,
-            "summary": s.summary,
-            "started_at": s.started_at.isoformat() if s.started_at else None,
-            "risk_level": s.risk_level,
-            "status": s.status,
-        }
 
-    active, closed = [], []
-    for s in rows:
-        (closed if s.status == "closed" else active).append(_item(s))
-    return {"active": active[:50], "closed": closed[:50]}
+@router.get("/sessions/{session_id}")
+def get_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """单个会话元数据（仅本人）。"""
+    session = db.get(ChatSession, session_id)
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
+    if session.user_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
+    return _session_item(session)
 
 
 @router.get("/sessions/{session_id}/messages")

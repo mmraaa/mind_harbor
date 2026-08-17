@@ -9,11 +9,19 @@ export type ChatSession = {
   status: string
 }
 
-/** GET /chat/sessions 按状态分组 */
-export type SessionListGrouped = {
-  active: ChatSession[]
-  closed: ChatSession[]
+/** GET /chat/sessions 分页（按 status 筛选） */
+export type SessionListPage = {
+  status: 'active' | 'closed'
+  items: ChatSession[]
+  total: number
+  page: number
+  page_size: number
+  has_more: boolean
 }
+
+export const SESSION_PAGE_SIZE = 20
+
+export type SessionStatusFilter = SessionListPage['status']
 
 export type ChatMessage = {
   id: number
@@ -97,21 +105,31 @@ export type ChatStreamEvent =
   | { type: 'error'; payload: { message?: string; detail?: string } }
   | { type: string; payload: Record<string, unknown> }
 
-export async function listSessions(): Promise<SessionListGrouped> {
-  const { data } = await api.get<SessionListGrouped>('/chat/sessions')
+export async function listSessionsPage(
+  status: SessionStatusFilter,
+  page = 1,
+  pageSize = SESSION_PAGE_SIZE,
+): Promise<SessionListPage> {
+  const { data } = await api.get<SessionListPage>('/chat/sessions', {
+    params: { status, page, page_size: pageSize },
+  })
   return {
-    active: data?.active ?? [],
-    closed: data?.closed ?? [],
+    status: data?.status ?? status,
+    items: data?.items ?? [],
+    total: data?.total ?? 0,
+    page: data?.page ?? page,
+    page_size: data?.page_size ?? pageSize,
+    has_more: data?.has_more ?? false,
   }
 }
 
-export function findSessionStatus(
-  grouped: SessionListGrouped,
-  sessionId: number,
-): 'active' | 'closed' | null {
-  if (grouped.active.some((s) => s.id === sessionId)) return 'active'
-  if (grouped.closed.some((s) => s.id === sessionId)) return 'closed'
-  return null
+export async function getSession(sessionId: number): Promise<ChatSession> {
+  const { data } = await api.get<ChatSession>(`/chat/sessions/${sessionId}`)
+  return data
+}
+
+export function sessionLifecycleStatus(session: ChatSession): 'active' | 'closed' {
+  return session.status === 'closed' ? 'closed' : 'active'
 }
 
 export async function listMessages(sessionId: number): Promise<ChatMessage[]> {

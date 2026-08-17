@@ -4,7 +4,7 @@ import { addFavorite, removeFavorite } from '../../api/favorites'
 import {
   endSession as endSessionApi,
   listMessages,
-  listSessions,
+  listSessionsPage,
   streamChat,
   type JournalPayload,
   type ToolCardPayload,
@@ -110,8 +110,8 @@ export default function ChatPage() {
         },
       })
 
-      const grouped = await listSessions()
-      const sid = previousSessionId ?? grouped.active[0]?.id ?? null
+      const activePage = await listSessionsPage('active', 1, 1)
+      const sid = previousSessionId ?? activePage.items[0]?.id ?? null
       if (sid != null) {
         setSessionId(sid, 'active')
         const rows = await listMessages(sid)

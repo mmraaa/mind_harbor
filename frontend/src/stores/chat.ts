@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import {
-  findSessionStatus,
+  getSession,
   listMessages,
-  listSessions,
+  sessionLifecycleStatus,
   type ChatMessage,
   type JournalPayload,
   type ToolCardPayload,
@@ -96,15 +96,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return
     }
     try {
-      const [rows, grouped] = await Promise.all([listMessages(id), listSessions()])
-      const status = findSessionStatus(grouped, id)
-      if (status == null) {
-        sessionStorage.removeItem(SESSION_KEY)
-        set({ sessionId: null, sessionStatus: null, messages: [], hydrated: true })
-        return
-      }
+      const [rows, session] = await Promise.all([listMessages(id), getSession(id)])
       set({
-        sessionStatus: status,
+        sessionStatus: sessionLifecycleStatus(session),
         messages: toUiMessages(rows),
         hydrated: true,
       })
@@ -115,12 +109,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   openSession: async (sessionId) => {
-    const [rows, grouped] = await Promise.all([listMessages(sessionId), listSessions()])
-    const status = findSessionStatus(grouped, sessionId) ?? 'closed'
+    const [rows, session] = await Promise.all([listMessages(sessionId), getSession(sessionId)])
     sessionStorage.setItem(SESSION_KEY, String(sessionId))
     set({
       sessionId,
-      sessionStatus: status,
+      sessionStatus: sessionLifecycleStatus(session),
       messages: toUiMessages(rows),
       error: '',
       sending: false,
