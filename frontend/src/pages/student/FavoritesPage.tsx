@@ -1,3 +1,4 @@
+import { Bookmark, Shell } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { listFavorites, removeFavorite, type FavoriteItem } from '../../api/favorites'
 import { getErrorMessage } from '../../api/client'
@@ -15,6 +16,46 @@ function formatTime(iso?: string | null) {
   } catch {
     return iso
   }
+}
+
+function MemoryShell({
+  item,
+  index,
+  onRemove,
+}: {
+  item: FavoriteItem
+  index: number
+  onRemove: (item: FavoriteItem) => void
+}) {
+  return (
+    <article
+      className="memory-shell"
+      style={{ animationDelay: `${index * 40}ms` }}
+    >
+      <div className="memory-shell__rail" aria-hidden>
+        <span className="memory-shell__node" />
+      </div>
+      <div className="memory-shell__body">
+        <header className="memory-shell__head">
+          <div>
+            <Bookmark size={14} aria-hidden className="memory-shell__mark" />
+            <h3>{item.session_title || `会话 #${item.session_id}`}</h3>
+          </div>
+          <time className="memory-shell__time">{formatTime(item.created_at)}</time>
+        </header>
+        <div className="memory-shell__bubble msg msg--assistant">
+          <div className="msg__bubble">
+            <MarkdownMessage text={item.content} />
+          </div>
+        </div>
+        <footer className="memory-shell__foot">
+          <button type="button" className="ghost-button" onClick={() => void onRemove(item)}>
+            移出收藏
+          </button>
+        </footer>
+      </div>
+    </article>
+  )
 }
 
 export default function FavoritesPage() {
@@ -43,43 +84,39 @@ export default function FavoritesPage() {
       await removeFavorite(item.message_id)
       setItems((prev) => prev.filter((x) => x.message_id !== item.message_id))
     } catch (err) {
-      setError(getErrorMessage(err, '取消收藏失败'))
+      setError(getErrorMessage(err, '移出收藏失败'))
     }
   }
 
   return (
-    <div>
-      <header className="page-header">
+    <div className="archive-page archive-page--memory">
+      <header className="page-header archive-page__header">
         <div>
-          <p className="page-header__eyebrow">SAVED</p>
+          <p className="page-header__eyebrow">留声</p>
           <h1>收藏回复</h1>
-          <p className="page-header__description">保存对你有帮助的陪伴句子与资源摘要，方便回看。</p>
+          <p className="page-header__description">
+            你标记过的陪伴句子，像留在岸边的回声，随时可以再听一次。
+          </p>
         </div>
+        {!loading && items.length > 0 && (
+          <span className="archive-count">共 {items.length} 条</span>
+        )}
       </header>
 
-      {error && (
-        <p style={{ color: 'var(--danger)', marginBottom: 12, fontFamily: 'var(--font-ui)' }}>{error}</p>
-      )}
+      {error && <p className="archive-alert">{error}</p>}
 
       {loading ? (
-        <p style={{ color: 'var(--muted)' }}>加载中…</p>
+        <p className="archive-loading">正在打开档案…</p>
       ) : items.length === 0 ? (
-        <p style={{ color: 'var(--muted)' }}>还没有收藏。在聊天里点书签即可保存助手回复。</p>
+        <div className="archive-empty archive-empty--memory">
+          <Shell size={32} strokeWidth={1.4} aria-hidden />
+          <h2>还没有留声</h2>
+          <p>在陪伴对话里，点回复旁的书签，把对你有帮助的句子收进这里。</p>
+        </div>
       ) : (
-        <div className="list-panel">
-          {items.map((item) => (
-            <article key={item.favorite_id} className="list-row">
-              <div>
-                <h3>{item.session_title || `会话 #${item.session_id}`}</h3>
-                <MarkdownMessage text={item.content} />
-              </div>
-              <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-                <span className="time">{formatTime(item.created_at)}</span>
-                <button type="button" className="ghost-button" onClick={() => void onRemove(item)}>
-                  取消收藏
-                </button>
-              </div>
-            </article>
+        <div className="memory-timeline">
+          {items.map((item, index) => (
+            <MemoryShell key={item.favorite_id} item={item} index={index} onRemove={onRemove} />
           ))}
         </div>
       )}

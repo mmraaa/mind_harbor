@@ -35,6 +35,13 @@ export type ResourceItem = {
   url?: string | null
 }
 
+export type JournalEmotionPayload = {
+  category?: string
+  intensity?: number
+  stress_source?: string | null
+  support_need?: string | null
+}
+
 export type ToolCardPayload = {
   type: string
   /** search_knowledge */
@@ -51,10 +58,20 @@ export type ToolCardPayload = {
   format?: string
   degraded?: boolean
   note?: string
-  /** crisis */
+  /** crisis (dialogue 风险筛查,非 Agent 工具) */
   hotline?: string
-  /** breathing / misc */
+  /** generate_breathing */
+  exercise?: string
+  name?: string
   steps?: string[]
+  /** create_reminder */
+  reminder_id?: number
+  content?: string
+  remind_at?: string
+  journal_id?: number
+  summary?: string
+  mood_score?: number
+  emotion?: JournalEmotionPayload
   title?: string
   desc?: string
   [key: string]: unknown

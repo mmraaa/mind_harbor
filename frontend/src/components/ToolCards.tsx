@@ -1,4 +1,28 @@
-import { BookOpen, Headphones, Sparkles } from 'lucide-react'
+/**
+ * 学生端 Agent 工具卡片渲染。
+ *
+ * | 工具 / 来源              | payload.type     | 展示 |
+ * |-------------------------|------------------|------|
+ * | search_knowledge        | knowledge        | 参考资料(折叠) |
+ * | recommend_resources     | resources        | 推荐资源 |
+ * | speak_voice             | voice            | 语音陪伴 |
+ * | generate_breathing      | breathing        | 478 呼吸 → 弹层 |
+ * | create_reminder         | reminder         | 日程提醒 + 本机定时 |
+ * | dialogue 风险筛查       | crisis           | 危机热线 |
+ * | end_session (独立事件)  | —                | journal 卡片(UiCard) |
+ *
+ * 工具执行失败 `{ error }` 不会进入卡片列表。
+ */
+import { BookOpen, Bell, Headphones, Leaf, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { getBreathingExercise } from '../data/breathing'
+import {
+  formatReminderWhen,
+  isReminderScheduled,
+  registerLocalReminder,
+  requestReminderNotification,
+} from '../lib/localReminders'
 import { MarkdownMessage } from './MarkdownMessage'
 import type { ToolCardPayload } from '../api/chat'
 import type { UiCard } from '../stores/chat'
@@ -131,8 +155,122 @@ function CrisisCard({ payload }: { payload: ToolCardPayload }) {
   )
 }
 
-/** 仅渲染用户可理解的卡片；内部工具结果不直接展示。 */
-export function ToolCards({ cards }: { cards: UiCard[] }) {
+function BreathingCard({
+  onOpen,
+}: {
+  payload: ToolCardPayload
+  onOpen?: () => void
+}) {
+  const meta = getBreathingExercise('478')
+
+  return (
+    <div className="tool-card tool-card--breathing">
+      <h4 className="tool-card__heading">
+        <Leaf size={14} aria-hidden />
+        478 呼吸
+      </h4>
+      <p className="tool-card__hint">助手为你准备了一段可跟随的 478 节奏，点按即可开始。</p>
+      <div className="tool-card__breathing-head">
+        <strong>{meta.name}</strong>
+        <span className="chip">{meta.durationHint}</span>
+      </div>
+      <p className="tool-card__breathing-tagline">{meta.tagline}</p>
+      {onOpen ? (
+        <button type="button" className="primary-button tool-card__breathing-cta" onClick={onOpen}>
+          开始跟随
+        </button>
+      ) : (
+        <Link to="/student/practice" className="primary-button tool-card__breathing-cta">
+          开始跟随
+        </Link>
+      )}
+    </div>
+  )
+}
+
+function ReminderCard({ payload }: { payload: ToolCardPayload }) {
+  const content = typeof payload.content === 'string' ? payload.content : ''
+  const remindAt = typeof payload.remind_at === 'string' ? payload.remind_at : ''
+  if (!content || !remindAt) return null
+
+  const [scheduled, setScheduled] = useState(() =>
+    isReminderScheduled({
+      reminder_id: payload.reminder_id as number | undefined,
+      content,
+      remind_at: remindAt,
+    }),
+  )
+
+  useEffect(() => {
+    const item = registerLocalReminder({
+      reminder_id: payload.reminder_id as number | undefined,
+      content,
+      remind_at: remindAt,
+    })
+    if (item) setScheduled(!item.fired)
+  }, [content, remindAt, payload.reminder_id])
+
+  const when = formatReminderWhen(remindAt)
+  const past = new Date(remindAt).getTime() <= Date.now()
+
+  return (
+    <div className="tool-card tool-card--reminder">
+      <h4 className="tool-card__heading">
+        <Bell size={14} aria-hidden />
+        日程提醒
+      </h4>
+      <p className="tool-card__hint">
+        本机定时：页面打开期间到点会弹窗；关闭浏览器后需下次进入再补发。
+      </p>
+      <p className="tool-card__reminder-content">{content}</p>
+      <div className="tool-card__reminder-meta">
+        <time>{when}</time>
+        {scheduled && !past ? <span className="chip chip--live">本机已设置</span> : null}
+        {past ? <span className="chip">时间已过</span> : null}
+      </div>
+      {typeof Notification !== 'undefined' && Notification.permission === 'default' && (
+        <button
+          type="button"
+          className="ghost-button tool-card__reminder-notify"
+          onClick={() => void requestReminderNotification()}
+        >
+          允许浏览器通知
+        </button>
+      )}
+    </div>
+  )
+}
+
+function renderToolPayload(p: ToolCardPayload, idx: number, onOpenBreathing?: () => void) {
+  if (p.type === 'knowledge' || p.type === 'sources') {
+    return <KnowledgeCard key={`knowledge-${idx}`} payload={p} />
+  }
+  if (p.type === 'resources') {
+    return <ResourcesCard key={`resources-${idx}`} payload={p} />
+  }
+  if (p.type === 'voice') {
+    return <VoiceCard key={`voice-${idx}`} payload={p} />
+  }
+  if (p.type === 'crisis') {
+    return <CrisisCard key={`crisis-${idx}`} payload={p} />
+  }
+  if (p.type === 'breathing') {
+    return <BreathingCard key={`breathing-${idx}`} payload={p} onOpen={onOpenBreathing} />
+  }
+  if (p.type === 'reminder') {
+    return <ReminderCard key={`reminder-${idx}`} payload={p} />
+  }
+  return null
+}
+
+/** 渲染 Agent / 风险筛查产出的 tool_card；end_session 的 journal 走 UiCard.kind。 */
+export function ToolCards({
+  cards,
+  onOpenBreathing,
+}: {
+  cards: UiCard[]
+  onOpenBreathing?: () => void
+}) {
   const nodes = cards.flatMap((card, idx) => {
     if (card.kind === 'journal') {
       const e = card.payload.emotion
@@ -149,25 +287,19 @@ export function ToolCards({ cards }: { cards: UiCard[] }) {
               </>
             )}
           </p>
+          {card.payload.journal_id != null && (
+            <Link
+              to={`/student/journals/${card.payload.journal_id}`}
+              className="ghost-button tool-card__journal-link"
+            >
+              查看日记 →
+            </Link>
+          )}
         </div>
       )
     }
 
-    const p = card.payload
-    if (p.type === 'knowledge' || p.type === 'sources') {
-      return <KnowledgeCard key={`knowledge-${idx}`} payload={p} />
-    }
-    if (p.type === 'resources') {
-      return <ResourcesCard key={`resources-${idx}`} payload={p} />
-    }
-    if (p.type === 'voice') {
-      return <VoiceCard key={`voice-${idx}`} payload={p} />
-    }
-    if (p.type === 'crisis') {
-      return <CrisisCard key={`crisis-${idx}`} payload={p} />
-    }
-
-    return null
+    return renderToolPayload(card.payload, idx, onOpenBreathing)
   })
 
   const visible = nodes.filter(Boolean)

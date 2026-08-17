@@ -1,6 +1,7 @@
 import type { LucideIcon } from 'lucide-react'
 import { LifeBuoy, LogOut, ShieldCheck } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { LocalReminderHost } from '../LocalReminderHost'
 import { useAuthStore } from '../../stores/auth'
 import { useChatStore } from '../../stores/chat'
 
@@ -126,6 +127,8 @@ export function WorkspaceShell({
       <nav className="mobile-nav" aria-label="移动端导航">
         <NavigationLinks items={nav} mobile />
       </nav>
+
+      {showEmergencyHelp ? <LocalReminderHost /> : null}
     </div>
   )
 }

@@ -11,6 +11,7 @@ import {
 } from '../../api/chat'
 import { getErrorMessage } from '../../api/client'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
+import { BreathingModal } from '../../components/BreathingModal'
 import { ToolCards } from '../../components/ToolCards'
 import { toUiMessages, useChatStore, type UiMessage } from '../../stores/chat'
 
@@ -34,6 +35,7 @@ export default function ChatPage() {
 
   const [draft, setDraft] = useState('')
   const [ending, setEnding] = useState(false)
+  const [breathingModalOpen, setBreathingModalOpen] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -217,7 +219,12 @@ export default function ChatPage() {
                   m.text
                 )}
               </div>
-              {m.cards && m.cards.length > 0 && <ToolCards cards={m.cards} />}
+              {m.cards && m.cards.length > 0 && (
+                <ToolCards
+                  cards={m.cards}
+                  onOpenBreathing={() => setBreathingModalOpen(true)}
+                />
+              )}
             </article>
           ))}
           <div ref={bottomRef} />
@@ -277,6 +284,8 @@ export default function ChatPage() {
           )}
         </div>
       </section>
+
+      {breathingModalOpen && <BreathingModal onClose={() => setBreathingModalOpen(false)} />}
     </div>
   )
 }

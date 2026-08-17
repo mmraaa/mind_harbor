@@ -1,54 +1,101 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
-
-type Msg = {
-  id: string
-  role: 'user' | 'assistant'
-  text: string
-  sql?: string
-  table?: { headers: string[]; rows: string[][] }
-}
+import { streamCounselorChat } from '../../api/counselorChat'
+import { getErrorMessage } from '../../api/client'
+import { CounselorToolCards, CounselorToolsHint } from '../../components/CounselorToolCards'
+import { MarkdownMessage } from '../../components/MarkdownMessage'
+import { useCounselorAgentStore } from '../../stores/counselorAgent'
 
 const SUGGESTIONS = [
   '本周焦虑强度最高的 3 位学生是谁？',
-  '阿南近 7 日情绪类别分布？',
-  '列出本月被标记为 high 风险的会话',
-]
-
-const SEED: Msg[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    text: '你好。我是咨询师端 SQL Agent，可以用自然语言查询你管理范围内的学生情绪、日记与会话统计。查询只读，不会修改数据。',
-  },
+  '查看 student 最近的情绪日记记录',
+  '最近两周有哪些需要重点关注的学生？',
+  '列出所有被标记为 high 风险等级的会话',
 ]
 
 export function SqlAgentPage() {
-  const [messages, setMessages] = useState<Msg[]>(SEED)
-  const [draft, setDraft] = useState('')
+  const messages = useCounselorAgentStore((s) => s.messages)
+  const draft = useCounselorAgentStore((s) => s.draft)
+  const sending = useCounselorAgentStore((s) => s.sending)
+  const error = useCounselorAgentStore((s) => s.error)
+  const setMessages = useCounselorAgentStore((s) => s.setMessages)
+  const setDraft = useCounselorAgentStore((s) => s.setDraft)
+  const setSending = useCounselorAgentStore((s) => s.setSending)
+  const setError = useCounselorAgentStore((s) => s.setError)
+  const clearError = useCounselorAgentStore((s) => s.clearError)
+  const clearChat = useCounselorAgentStore((s) => s.clearChat)
 
-  function ask(text: string) {
-    const q = text.trim()
-    if (!q) return
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, sending])
+
+  async function ask(text: string) {
+    const content = text.trim()
+    if (!content || sending) return
+
+    clearError()
+    setSending(true)
+    setDraft('')
+
+    const userKey = `u-${Date.now()}`
+    const assistantKey = `a-${Date.now()}`
+
     setMessages((prev) => [
       ...prev,
-      { id: `u-${Date.now()}`, role: 'user', text: q },
-      {
-        id: `a-${Date.now()}`,
-        role: 'assistant',
-        text: '已在只读连接中执行查询，并整理如下结果。',
-        sql: "SELECT u.name, AVG(e.intensity) AS avg_intensity\nFROM emotions e JOIN users u ON u.id = e.user_id\nWHERE e.created_at >= NOW() - INTERVAL '7 days'\nGROUP BY u.name\nORDER BY avg_intensity DESC\nLIMIT 3;",
-        table: {
-          headers: ['学生', '近 7 日平均强度', '主情绪'],
-          rows: [
-            ['阿舟', '7.4', 'anxious'],
-            ['小禾', '6.1', 'tired'],
-            ['阿南', '5.2', 'anxious'],
-          ],
-        },
-      },
+      { key: userKey, role: 'user', text: content, cards: [] },
+      { key: assistantKey, role: 'assistant', text: '', cards: [], streaming: true },
     ])
-    setDraft('')
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    try {
+      await streamCounselorChat({
+        content,
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (event.type === 'text') {
+            const piece = String(event.payload?.content ?? '')
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.key === assistantKey ? { ...m, text: m.text + piece } : m,
+              ),
+            )
+          } else if (event.type === 'tool_card') {
+            const payload = event.payload
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.key === assistantKey ? { ...m, cards: [...m.cards, payload] } : m,
+              ),
+            )
+          } else if (event.type === 'error') {
+            const msg =
+              event.payload.message || event.payload.detail || '查询过程出现异常'
+            setError(msg)
+          }
+        },
+      })
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        setError(getErrorMessage(err, '查询失败'))
+        setMessages((prev) => prev.filter((m) => m.key !== assistantKey))
+      }
+    } finally {
+      setMessages((prev) =>
+        prev.map((m) => (m.key === assistantKey ? { ...m, streaming: false } : m)),
+      )
+      setSending(false)
+      abortRef.current = null
+    }
+  }
+
+  function handleClearChat() {
+    abortRef.current?.abort()
+    clearChat()
+    abortRef.current = null
   }
 
   return (
@@ -58,7 +105,7 @@ export function SqlAgentPage() {
           <p className="page-header__eyebrow">SQL AGENT</p>
           <h1>学生资料整理助手</h1>
           <p className="page-header__description">
-            用自然语言查询管理学生的情绪记录、日记摘要与会话统计。底层走只读 SQL + 白名单校验。
+            用自然语言查询学生情绪、日记与会话统计，底层经只读 SQL 与表白名单校验。
           </p>
         </div>
       </header>
@@ -66,57 +113,65 @@ export function SqlAgentPage() {
       <section className="companion-chat">
         <header className="companion-chat__header">
           <div>
-            <h2>SQL Agent</h2>
-            <p>自然语言 → SQL → 只读执行 → 解释</p>
+            <h2>咨询师 Agent</h2>
+            <p>自然语言 → 工具调用 → 只读查询 → 专业解读 · 切换页面会保留当前对话</p>
+            <CounselorToolsHint />
           </div>
-          <span className="chip">READ ONLY</span>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span className="chip">READ ONLY</span>
+            <button type="button" className="ghost-button" disabled={sending} onClick={handleClearChat}>
+              清空对话
+            </button>
+          </div>
         </header>
 
-        <div className="companion-stream">
+        <div className="companion-stream" aria-live="polite">
           {messages.map((m) => (
-            <article key={m.id} className={`msg msg--${m.role}`}>
-              <div className="msg__bubble">{m.text}</div>
-              {m.sql && (
-                <div className="tool-stack">
-                  <div className="tool-card tool-card--sql">
-                    <h4>生成的 SQL</h4>
-                    <code>{m.sql}</code>
-                  </div>
-                  {m.table && (
-                    <div className="tool-card">
-                      <h4>结果摘要</h4>
-                      <div className="table-wrap">
-                        <table className="data-table">
-                          <thead>
-                            <tr>
-                              {m.table.headers.map((h) => (
-                                <th key={h}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {m.table.rows.map((row) => (
-                              <tr key={row.join('-')}>
-                                {row.map((cell) => (
-                                  <td key={cell}>{cell}</td>
-                                ))}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
+            <article key={m.key} className={`msg msg--${m.role}`}>
+              {m.role === 'assistant' && (
+                <div className="msg__meta">
+                  <span>咨询师助手</span>
                 </div>
               )}
+              <div className="msg__bubble">
+                {m.role === 'assistant' ? (
+                  m.text ? (
+                    <MarkdownMessage text={m.text} />
+                  ) : m.streaming ? (
+                    '正在查询…'
+                  ) : null
+                ) : (
+                  m.text
+                )}
+              </div>
+              {m.cards.length > 0 && <CounselorToolCards cards={m.cards} />}
             </article>
           ))}
+          <div ref={bottomRef} />
         </div>
 
         <div className="companion-dock">
+          {error && (
+            <p
+              style={{
+                color: 'var(--danger)',
+                marginBottom: 8,
+                fontFamily: 'var(--font-ui)',
+                fontSize: 13,
+              }}
+            >
+              {error}
+            </p>
+          )}
           <div className="suggest-row">
             {SUGGESTIONS.map((s) => (
-              <button key={s} type="button" className="suggest" onClick={() => ask(s)}>
+              <button
+                key={s}
+                type="button"
+                className="suggest"
+                disabled={sending}
+                onClick={() => void ask(s)}
+              >
                 {s}
               </button>
             ))}
@@ -125,18 +180,25 @@ export function SqlAgentPage() {
             className="composer"
             onSubmit={(e) => {
               e.preventDefault()
-              ask(draft)
+              void ask(draft)
             }}
           >
             <textarea
               className="text-area"
               rows={2}
-              placeholder="例如：帮我整理本周高焦虑学生名单…"
+              placeholder="例如：统计近 7 日各情绪类别分布、查看某学生日记…"
               value={draft}
+              disabled={sending}
               onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void ask(draft)
+                }
+              }}
             />
-            <button type="submit" className="primary-button">
-              询问
+            <button type="submit" className="primary-button" disabled={sending || !draft.trim()}>
+              {sending ? '查询中…' : '询问'}
             </button>
           </form>
         </div>
