@@ -291,6 +291,41 @@ def test_agent_run_without_tool_calls(db, seed_user, seed_session, monkeypatch):
     assert tool_context == ""
 
 
+def test_agent_run_injects_current_beijing_time(monkeypatch, db, seed_user, seed_session):
+    """提示词注入当前北京时间:LLM 决策时知道"现在",正确计算相对时间(reminder)。"""
+    captured = {}
+
+    def fake(messages, tools, **kw):
+        captured["system"] = messages[0]["content"]
+        return (None, [])
+
+    monkeypatch.setattr(llm_adapter, "chat_with_tools", fake)
+    agent.run(db, seed_user.id, seed_session.id, "明天下午提醒我", system_prompt="你", context="")
+
+    assert "【当前时间】" in captured["system"]
+    assert "北京时间" in captured["system"]
+    # 时间格式 YYYY-MM-DD HH:MM:SS 且为北京时间(UTC+8),与当前相差 <1h
+    import re
+    m = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})", captured["system"])
+    assert m
+    from datetime import datetime, timedelta, timezone
+    injected = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(
+        tzinfo=timezone(timedelta(hours=8))
+    )
+    now_bj = datetime.now(timezone(timedelta(hours=8)))
+    assert abs((now_bj - injected).total_seconds()) < 3600  # 与当前北京时间相差 <1h
+
+
+def test_create_reminder_rejects_past_time(db, seed_user):
+    """过去时间的提醒 → 拒绝,防止错误时间戳落库。"""
+    from datetime import datetime, timedelta, timezone
+
+    past = (datetime.now(timezone(timedelta(hours=8))) - timedelta(hours=1)).isoformat()
+    handler = tools_registry.registry.get("create_reminder").handler
+    with pytest.raises(ValueError, match="早于当前"):
+        handler(db, seed_user.id, 1, content="过时提醒", remind_at=past)
+
+
 def test_agent_run_executes_multiple_tools_in_one_round(db, seed_user, seed_session, monkeypatch):
     """一轮返回多个 tool_call(如 search_knowledge + speak_voice)→ 全部执行。"""
 

@@ -11,6 +11,7 @@
 
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -18,6 +19,14 @@ from app.adapters import llm as llm_adapter
 from app.ai.tools import registry as tools_registry
 
 logger = logging.getLogger(__name__)
+
+# 北京时间 = UTC+8
+BEIJING_TZ = timezone(timedelta(hours=8))
+
+
+def _now_beijing() -> str:
+    """当前北京时间,用于提示词注入(让 LLM 计算 reminder/相对时间有依据)。"""
+    return datetime.now(BEIJING_TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 MAX_TOOL_ROUNDS = 3
 
@@ -79,8 +88,10 @@ def run(
     """
     reg = registry or tools_registry.registry
     tools = reg.openai_tools()
+    # 注入当前北京时间:LLM 据此正确计算相对时间(如"明天下午3点"→ 具体时间戳)
+    system = f"{system_prompt}\n\n{TOOL_SYSTEM_PROMPT}\n【当前时间】{_now_beijing()}(北京时间,UTC+8)"
     messages: list[dict] = [
-        {"role": "system", "content": system_prompt + "\n\n" + TOOL_SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": f"【对话上下文】\n{context}\n\n【用户本轮消息】\n{user_content}"},
     ]
 

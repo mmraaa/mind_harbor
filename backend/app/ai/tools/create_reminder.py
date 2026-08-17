@@ -1,11 +1,13 @@
 """create_reminder 工具:创建日程提醒。"""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
 from app.ai.tools.registry import ToolSpec, registry
 from app.models.resource import Reminder
+
+BEIJING_TZ = timezone(timedelta(hours=8))
 
 
 def _reminder(
@@ -16,6 +18,12 @@ def _reminder(
         at = datetime.fromisoformat(remind_at)
     except ValueError as exc:
         raise ValueError(f"提醒时间格式不正确(需 ISO 8601): {remind_at}") from exc
+
+    # 无时区的时间串按北京时间处理,统一后做合理性校验(早于当前视为错误)
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=BEIJING_TZ)
+    if at < datetime.now(BEIJING_TZ):
+        raise ValueError(f"提醒时间早于当前时间,请确认: {remind_at}")
 
     r = Reminder(user_id=user_id, content=content[:200], remind_at=at)
     db.add(r)
