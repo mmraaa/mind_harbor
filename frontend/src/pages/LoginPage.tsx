@@ -9,23 +9,49 @@ export default function LoginPage() {
   const user = useAuthStore((s) => s.user)
   const loading = useAuthStore((s) => s.loading)
   const login = useAuthStore((s) => s.login)
+  const register = useAuthStore((s) => s.register)
 
+  const [mode, setMode] = useState<'login' | 'register'>('login')
   const [account, setAccount] = useState('student')
   const [password, setPassword] = useState('student123')
+  const [name, setName] = useState('')
   const [error, setError] = useState('')
 
   if (user) {
     return <Navigate to={roleHome(user.role)} replace />
   }
 
+  function switchToRegister() {
+    setMode('register')
+    setAccount('')
+    setPassword('')
+    setError('')
+  }
+
+  function switchToLogin() {
+    setMode('login')
+    setAccount('student')
+    setPassword('student123')
+    setName('')
+    setError('')
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
     try {
-      const u = await login(account.trim(), password)
+      const u =
+        mode === 'login'
+          ? await login(account.trim(), password)
+          : await register(account.trim(), password, name.trim())
       navigate(roleHome(u.role), { replace: true })
     } catch (err) {
-      setError(getErrorMessage(err, '账号或密码不正确'))
+      setError(
+        getErrorMessage(
+          err,
+          mode === 'login' ? '账号或密码不正确' : '注册失败，用户名可能已被占用',
+        ),
+      )
     }
   }
 
@@ -57,11 +83,30 @@ export default function LoginPage() {
 
       <section className="login-panel">
         <div className="login-card">
-          <p className="login-card__eyebrow">欢迎回来</p>
-          <h2>进入 MindHarbor</h2>
-          <p className="login-card__lead">登录后按账号角色进入对应工作台。</p>
+          <p className="login-card__eyebrow">{mode === 'login' ? '欢迎回来' : '创建账号'}</p>
+          <h2>{mode === 'login' ? '进入 MindHarbor' : '注册学生账号'}</h2>
+          <p className="login-card__lead">
+            {mode === 'login'
+              ? '登录后按账号角色进入对应工作台。'
+              : '注册成功后将自动登录（仅学生角色）。'}
+          </p>
 
           <form onSubmit={onSubmit}>
+            {mode === 'register' && (
+              <>
+                <label className="field-label" htmlFor="display-name">
+                  昵称
+                </label>
+                <input
+                  id="display-name"
+                  className="text-input"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="希望如何称呼你"
+                />
+              </>
+            )}
+
             <label className="field-label" htmlFor="account">
               账号
             </label>
@@ -71,7 +116,10 @@ export default function LoginPage() {
               autoComplete="username"
               value={account}
               onChange={(e) => setAccount(e.target.value)}
+              placeholder={mode === 'register' ? '3–32 位字母数字下划线' : undefined}
               required
+              minLength={mode === 'register' ? 3 : undefined}
+              maxLength={32}
             />
 
             <label className="field-label" htmlFor="password">
@@ -81,11 +129,25 @@ export default function LoginPage() {
               id="password"
               className="text-input"
               type="password"
-              autoComplete="current-password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              placeholder={mode === 'register' ? '至少 6 位' : undefined}
               required
+              minLength={mode === 'register' ? 6 : undefined}
             />
+
+            <div className="login-switch">
+              {mode === 'login' ? (
+                <button type="button" className="text-link" onClick={switchToRegister}>
+                  注册
+                </button>
+              ) : (
+                <button type="button" className="text-link" onClick={switchToLogin}>
+                  已有账号，去登录
+                </button>
+              )}
+            </div>
 
             {error && (
               <p className="login-hint" role="alert" style={{ color: 'var(--danger)', textAlign: 'left' }}>
@@ -94,7 +156,7 @@ export default function LoginPage() {
             )}
 
             <button className="primary-button login-submit" type="submit" disabled={loading}>
-              {loading ? '正在登录…' : '登录'}
+              {loading ? '处理中…' : mode === 'login' ? '登录' : '注册并登录'}
             </button>
           </form>
 

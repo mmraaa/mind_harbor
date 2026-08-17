@@ -1,7 +1,9 @@
 import { Bookmark, BookmarkCheck } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { addFavorite, removeFavorite } from '../../api/favorites'
 import {
+  endSession as endSessionApi,
   listMessages,
   listSessions,
   streamChat,
@@ -9,6 +11,8 @@ import {
   type ToolCardPayload,
 } from '../../api/chat'
 import { getErrorMessage } from '../../api/client'
+import { MarkdownMessage } from '../../components/MarkdownMessage'
+import { getBreathingExercise } from '../../data/breathing'
 import { toUiMessages, useChatStore, type UiCard, type UiMessage } from '../../stores/chat'
 
 const SUGGESTIONS = ['最近考试压力很大，睡不好', '想学一个两分钟的呼吸练习', '校园心理咨询怎么预约？']
@@ -41,14 +45,34 @@ function ToolCards({ cards }: { cards: UiCard[] }) {
           return (
             <div className="tool-card" key={idx}>
               <h4>参考来源</h4>
-              {p.sources.slice(0, 3).map((s) => (
-                <p key={s.title} style={{ marginBottom: 8 }}>
-                  <strong>{s.title}</strong>
-                  <br />
-                  {s.text.slice(0, 120)}
-                  {s.text.length > 120 ? '…' : ''}
-                </p>
-              ))}
+              {p.sources.slice(0, 3).map((s) => {
+                const excerpt = s.text.length > 120 ? `${s.text.slice(0, 120)}…` : s.text
+                return (
+                  <div key={s.title} style={{ marginBottom: 8 }}>
+                    <strong>{s.title}</strong>
+                    <MarkdownMessage text={excerpt} />
+                  </div>
+                )
+              })}
+            </div>
+          )
+        }
+
+        if (p.type === 'breathing') {
+          const ex = getBreathingExercise(typeof p.exercise === 'string' ? p.exercise : '478')
+          const name = typeof p.name === 'string' ? p.name : ex.name
+          const steps = Array.isArray(p.steps) && p.steps.length ? p.steps : ex.steps
+          return (
+            <div className="tool-card tool-card--breathing" key={idx}>
+              <h4>{name}</h4>
+              <ol>
+                {steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+              <Link className="tool-card__link" to="/student/practice">
+                打开练习台跟随节奏 →
+              </Link>
             </div>
           )
         }
@@ -66,23 +90,26 @@ function ToolCards({ cards }: { cards: UiCard[] }) {
 
 export default function ChatPage() {
   const sessionId = useChatStore((s) => s.sessionId)
+  const sessionStatus = useChatStore((s) => s.sessionStatus)
   const messages = useChatStore((s) => s.messages)
   const sending = useChatStore((s) => s.sending)
   const error = useChatStore((s) => s.error)
-  const endSession = useChatStore((s) => s.endSession)
   const hydrated = useChatStore((s) => s.hydrated)
   const hydrate = useChatStore((s) => s.hydrate)
   const setMessages = useChatStore((s) => s.setMessages)
   const setSessionId = useChatStore((s) => s.setSessionId)
   const setSending = useChatStore((s) => s.setSending)
-  const setEndSession = useChatStore((s) => s.setEndSession)
   const setDraftError = useChatStore((s) => s.setDraftError)
   const clearError = useChatStore((s) => s.clearError)
   const startNewSession = useChatStore((s) => s.startNewSession)
+  const markClosedWithJournal = useChatStore((s) => s.markClosedWithJournal)
 
   const [draft, setDraft] = useState('')
+  const [ending, setEnding] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+
+  const readOnly = sessionStatus === 'closed'
 
   useEffect(() => {
     void hydrate()
@@ -94,7 +121,7 @@ export default function ChatPage() {
 
   async function send(text: string) {
     const content = text.trim()
-    if (!content || sending) return
+    if (!content || sending || readOnly) return
 
     clearError()
     setSending(true)
@@ -103,10 +130,9 @@ export default function ChatPage() {
     const userKey = `u-${Date.now()}`
     const assistantKey = `a-${Date.now()}`
     const previousSessionId = useChatStore.getState().sessionId
-    const shouldEnd = useChatStore.getState().endSession
 
     setMessages((prev) => [
-      ...prev.filter((m) => m.key !== 'welcome'),
+      ...prev,
       { key: userKey, role: 'user', text: content },
       { key: assistantKey, role: 'assistant', text: '', cards: [], streaming: true },
     ])
@@ -118,7 +144,7 @@ export default function ChatPage() {
       await streamChat({
         content,
         sessionId: previousSessionId,
-        endSession: shouldEnd,
+        endSession: false,
         signal: controller.signal,
         onEvent: (event) => {
           if (event.type === 'text') {
@@ -154,10 +180,10 @@ export default function ChatPage() {
         },
       })
 
-      const sessions = await listSessions()
-      const sid = previousSessionId ?? sessions[0]?.id ?? null
+      const grouped = await listSessions()
+      const sid = previousSessionId ?? grouped.active[0]?.id ?? null
       if (sid != null) {
-        setSessionId(sid)
+        setSessionId(sid, 'active')
         const rows = await listMessages(sid)
         setMessages(toUiMessages(rows))
       } else {
@@ -165,7 +191,6 @@ export default function ChatPage() {
           prev.map((m) => (m.key === assistantKey ? { ...m, streaming: false } : m)),
         )
       }
-      if (shouldEnd) setEndSession(false)
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         setDraftError(getErrorMessage(err, '发送失败'))
@@ -174,6 +199,21 @@ export default function ChatPage() {
     } finally {
       setSending(false)
       abortRef.current = null
+    }
+  }
+
+  async function handleEndSession() {
+    const sid = useChatStore.getState().sessionId
+    if (sid == null || readOnly || ending) return
+    setEnding(true)
+    clearError()
+    try {
+      const journal = await endSessionApi(sid)
+      markClosedWithJournal(journal)
+    } catch (err) {
+      setDraftError(getErrorMessage(err, '结束会话失败'))
+    } finally {
+      setEnding(false)
     }
   }
 
@@ -201,19 +241,21 @@ export default function ChatPage() {
           <div>
             <h2>小屿 · 陪伴助手</h2>
             <p>
-              {sessionId != null ? `会话 #${sessionId}` : '新会话'} · 切换页面会保留当前对话
+              {sessionId != null ? `会话 #${sessionId}` : '新会话'}
+              {readOnly ? ' · 已结束（只读回放）' : ' · 切换页面会保留当前对话'}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <label className="chip" style={{ cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={endSession}
-                onChange={(e) => setEndSession(e.target.checked)}
-                style={{ marginRight: 6 }}
-              />
-              结束并生成日记
-            </label>
+            {sessionId != null && !readOnly && (
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={sending || ending}
+                onClick={() => void handleEndSession()}
+              >
+                {ending ? '结束中…' : '结束本会话'}
+              </button>
+            )}
             <button type="button" className="ghost-button" onClick={() => startNewSession()}>
               新会话
             </button>
@@ -240,7 +282,13 @@ export default function ChatPage() {
                   )}
                 </div>
               )}
-              <div className="msg__bubble">{m.text || (m.streaming ? '…' : '')}</div>
+              <div className="msg__bubble">
+                {m.role === 'assistant' ? (
+                  m.text ? <MarkdownMessage text={m.text} /> : m.streaming ? '…' : null
+                ) : (
+                  m.text
+                )}
+              </div>
               {m.cards && m.cards.length > 0 && <ToolCards cards={m.cards} />}
             </article>
           ))}
@@ -253,44 +301,52 @@ export default function ChatPage() {
               {error}
             </p>
           )}
-          <div className="suggest-row">
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className="suggest"
-                disabled={sending}
-                onClick={() => void send(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          <form
-            className="composer"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void send(draft)
-            }}
-          >
-            <textarea
-              className="text-area"
-              rows={2}
-              placeholder="慢慢说，不用一次说完…"
-              value={draft}
-              disabled={sending}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
+          {readOnly ? (
+            <p style={{ color: 'var(--muted)', fontFamily: 'var(--font-ui)', fontSize: '0.88rem' }}>
+              此会话已结束，只能浏览。可点「新会话」开始下一段陪伴。
+            </p>
+          ) : (
+            <>
+              <div className="suggest-row">
+                {SUGGESTIONS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="suggest"
+                    disabled={sending}
+                    onClick={() => void send(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <form
+                className="composer"
+                onSubmit={(e) => {
                   e.preventDefault()
                   void send(draft)
-                }
-              }}
-            />
-            <button type="submit" className="primary-button" disabled={sending || !draft.trim()}>
-              {sending ? '…' : '发送'}
-            </button>
-          </form>
+                }}
+              >
+                <textarea
+                  className="text-area"
+                  rows={2}
+                  placeholder="慢慢说，不用一次说完…"
+                  value={draft}
+                  disabled={sending}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void send(draft)
+                    }
+                  }}
+                />
+                <button type="submit" className="primary-button" disabled={sending || !draft.trim()}>
+                  {sending ? '…' : '发送'}
+                </button>
+              </form>
+            </>
+          )}
         </div>
       </section>
     </div>

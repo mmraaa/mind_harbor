@@ -1,12 +1,12 @@
 import { api } from './client'
 
 export type FavoriteItem = {
-  id?: number
-  message_id?: number
-  content?: string
-  role?: string
-  created_at?: string
-  [key: string]: unknown
+  favorite_id: number
+  message_id: number
+  session_id: number
+  session_title: string
+  content: string
+  created_at: string | null
 }
 
 export async function listFavorites(): Promise<FavoriteItem[]> {
@@ -14,12 +14,18 @@ export async function listFavorites(): Promise<FavoriteItem[]> {
   return data
 }
 
-export async function addFavorite(messageId: number): Promise<unknown> {
-  const { data } = await api.post(`/favorites/${messageId}`)
+export async function addFavorite(messageId: number): Promise<{ message_id: number; favorited: boolean }> {
+  const { data } = await api.post<{ message_id: number; favorited: boolean }>(
+    `/favorites/${messageId}`,
+  )
   return data
 }
 
-export async function removeFavorite(messageId: number): Promise<unknown> {
-  const { data } = await api.delete(`/favorites/${messageId}`)
+export async function removeFavorite(
+  messageId: number,
+): Promise<{ message_id: number; favorited: boolean }> {
+  const { data } = await api.delete<{ message_id: number; favorited: boolean }>(
+    `/favorites/${messageId}`,
+  )
   return data
 }

@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { fetchMe, login as apiLogin } from '../api/auth'
+import { fetchMe, login as apiLogin, register as apiRegister } from '../api/auth'
 import { getStoredToken, setStoredToken, type UserOut, type UserRole } from '../api/client'
 
 type AuthState = {
@@ -9,6 +9,7 @@ type AuthState = {
   bootstrapped: boolean
   bootstrap: () => Promise<void>
   login: (username: string, password: string) => Promise<UserOut>
+  register: (username: string, password: string, name?: string) => Promise<UserOut>
   logout: () => void
   homePath: () => string
 }
@@ -53,11 +54,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  register: async (username, password, name = '') => {
+    set({ loading: true })
+    try {
+      const res = await apiRegister(username, password, name)
+      setStoredToken(res.access_token)
+      set({ token: res.access_token, user: res.user, loading: false })
+      return res.user
+    } catch (err) {
+      set({ loading: false })
+      throw err
+    }
+  },
+
   logout: () => {
     setStoredToken(null)
     sessionStorage.removeItem('mh_active_session_id')
     set({ token: null, user: null })
-    // 延迟清聊天态，避免循环依赖；直接清 sessionStorage 即可，下次 hydrate 会重置
   },
 
   homePath: () => roleHome((get().user?.role as UserRole) || 'student'),

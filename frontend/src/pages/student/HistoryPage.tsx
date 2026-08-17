@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { listMessages, listSessions, type ChatMessage, type ChatSession } from '../../api/chat'
+import {
+  listMessages,
+  listSessions,
+  type ChatMessage,
+  type ChatSession,
+  type SessionListGrouped,
+} from '../../api/chat'
 import { getErrorMessage } from '../../api/client'
+import { MarkdownMessage } from '../../components/MarkdownMessage'
 import { useChatStore } from '../../stores/chat'
 
 function formatTime(iso: string) {
@@ -17,12 +24,76 @@ function formatTime(iso: string) {
   }
 }
 
+function SessionGroup({
+  title,
+  items,
+  activeId,
+  currentSessionId,
+  replaying,
+  onSelect,
+  onReplay,
+}: {
+  title: string
+  items: ChatSession[]
+  activeId: number | null
+  currentSessionId: number | null
+  replaying: boolean
+  onSelect: (id: number) => void
+  onReplay: (id: number) => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <h2 style={{ fontSize: '1rem', marginBottom: 10, color: 'var(--sage-dark)' }}>{title}</h2>
+      <div className="list-panel">
+        {items.map((s) => (
+          <article
+            key={s.id}
+            className={`list-row${activeId === s.id ? ' archive-student--active' : ''}`}
+          >
+            <button
+              type="button"
+              style={{ all: 'unset', cursor: 'pointer', display: 'block', width: '100%' }}
+              onClick={() => onSelect(s.id)}
+            >
+              <h3>
+                {s.title || `会话 #${s.id}`}
+                {currentSessionId === s.id ? (
+                  <span className="chip" style={{ marginLeft: 8 }}>
+                    当前
+                  </span>
+                ) : null}
+              </h3>
+              <p>
+                {s.status === 'closed'
+                  ? s.summary || '暂无摘要'
+                  : '对话未结束，无摘要'}
+              </p>
+            </button>
+            <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+              <span className="time">{formatTime(s.started_at)}</span>
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={replaying}
+                onClick={() => onReplay(s.id)}
+              >
+                {s.status === 'closed' ? '回放查看' : '回放到陪伴'}
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function HistoryPage() {
   const navigate = useNavigate()
   const openSession = useChatStore((s) => s.openSession)
   const currentSessionId = useChatStore((s) => s.sessionId)
 
-  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [grouped, setGrouped] = useState<SessionListGrouped>({ active: [], closed: [] })
   const [activeId, setActiveId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -33,10 +104,11 @@ export default function HistoryPage() {
     let alive = true
     ;(async () => {
       try {
-        const rows = await listSessions()
+        const data = await listSessions()
         if (!alive) return
-        setSessions(rows)
-        if (rows[0]) setActiveId(rows[0].id)
+        setGrouped(data)
+        const first = data.active[0] ?? data.closed[0]
+        if (first) setActiveId(first.id)
       } catch (err) {
         if (alive) setError(getErrorMessage(err, '无法加载会话列表'))
       } finally {
@@ -77,6 +149,8 @@ export default function HistoryPage() {
     }
   }
 
+  const empty = grouped.active.length === 0 && grouped.closed.length === 0
+
   return (
     <div>
       <header className="page-header">
@@ -84,7 +158,7 @@ export default function HistoryPage() {
           <p className="page-header__eyebrow">SESSIONS</p>
           <h1>历史会话</h1>
           <p className="page-header__description">
-            预览消息，或点「回放到陪伴」在今日陪伴中继续查看同一会话。
+            进行中可继续对话；已结束只能回放浏览，不可续聊。
           </p>
         </div>
       </header>
@@ -97,53 +171,28 @@ export default function HistoryPage() {
         <p style={{ color: 'var(--muted)' }}>加载中…</p>
       ) : (
         <div className="counselor-grid">
-          <div className="list-panel">
-            {sessions.length === 0 && (
+          <div>
+            {empty && (
               <p style={{ color: 'var(--muted)' }}>还没有会话，去「今日陪伴」说几句吧。</p>
             )}
-            {sessions.map((s) => (
-              <article
-                key={s.id}
-                className={`list-row${activeId === s.id ? ' archive-student--active' : ''}`}
-              >
-                <button
-                  type="button"
-                  style={{
-                    all: 'unset',
-                    cursor: 'pointer',
-                    display: 'block',
-                    width: '100%',
-                  }}
-                  onClick={() => setActiveId(s.id)}
-                >
-                  <h3>
-                    {s.title || `会话 #${s.id}`}
-                    {currentSessionId === s.id ? (
-                      <span className="chip" style={{ marginLeft: 8 }}>
-                        当前
-                      </span>
-                    ) : null}
-                  </h3>
-                  <p>{s.summary || `状态 ${s.status} · 风险 ${s.risk_level}`}</p>
-                  {s.risk_level === 'high' && (
-                    <span className="chip chip--risk" style={{ marginTop: 8 }}>
-                      风险会话
-                    </span>
-                  )}
-                </button>
-                <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-                  <span className="time">{formatTime(s.started_at)}</span>
-                  <button
-                    type="button"
-                    className="ghost-button"
-                    disabled={replaying}
-                    onClick={() => void replay(s.id)}
-                  >
-                    回放到陪伴
-                  </button>
-                </div>
-              </article>
-            ))}
+            <SessionGroup
+              title="进行中"
+              items={grouped.active}
+              activeId={activeId}
+              currentSessionId={currentSessionId}
+              replaying={replaying}
+              onSelect={setActiveId}
+              onReplay={(id) => void replay(id)}
+            />
+            <SessionGroup
+              title="已结束"
+              items={grouped.closed}
+              activeId={activeId}
+              currentSessionId={currentSessionId}
+              replaying={replaying}
+              onSelect={setActiveId}
+              onReplay={(id) => void replay(id)}
+            />
           </div>
 
           <aside className="card-item" style={{ maxHeight: '70vh', overflow: 'auto' }}>
@@ -167,7 +216,7 @@ export default function HistoryPage() {
                       border: m.role === 'user' ? undefined : '1px solid var(--line)',
                     }}
                   >
-                    {m.content}
+                    {m.role === 'assistant' ? <MarkdownMessage text={m.content} /> : m.content}
                   </div>
                 </div>
               ))

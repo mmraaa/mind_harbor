@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { listFavorites, removeFavorite, type FavoriteItem } from '../../api/favorites'
 import { getErrorMessage } from '../../api/client'
+import { MarkdownMessage } from '../../components/MarkdownMessage'
 
-function formatTime(iso?: string) {
+function formatTime(iso?: string | null) {
   if (!iso) return ''
   try {
     return new Date(iso).toLocaleString('zh-CN', {
@@ -14,15 +15,6 @@ function formatTime(iso?: string) {
   } catch {
     return iso
   }
-}
-
-function pickContent(item: FavoriteItem): string {
-  return String(item.content ?? item.message_content ?? item.text ?? '（无内容）')
-}
-
-function pickMessageId(item: FavoriteItem): number | null {
-  const id = item.message_id ?? item.id
-  return typeof id === 'number' ? id : null
 }
 
 export default function FavoritesPage() {
@@ -47,11 +39,9 @@ export default function FavoritesPage() {
   }, [])
 
   async function onRemove(item: FavoriteItem) {
-    const mid = pickMessageId(item)
-    if (mid == null) return
     try {
-      await removeFavorite(mid)
-      setItems((prev) => prev.filter((x) => pickMessageId(x) !== mid))
+      await removeFavorite(item.message_id)
+      setItems((prev) => prev.filter((x) => x.message_id !== item.message_id))
     } catch (err) {
       setError(getErrorMessage(err, '取消收藏失败'))
     }
@@ -77,25 +67,20 @@ export default function FavoritesPage() {
         <p style={{ color: 'var(--muted)' }}>还没有收藏。在聊天里点书签即可保存助手回复。</p>
       ) : (
         <div className="list-panel">
-          {items.map((item, idx) => {
-            const mid = pickMessageId(item)
-            return (
-              <article key={mid ?? idx} className="list-row">
-                <div>
-                  <h3>收藏消息{mid != null ? ` #${mid}` : ''}</h3>
-                  <p>{pickContent(item)}</p>
-                </div>
-                <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-                  <span className="time">{formatTime(String(item.created_at ?? ''))}</span>
-                  {mid != null && (
-                    <button type="button" className="ghost-button" onClick={() => void onRemove(item)}>
-                      取消收藏
-                    </button>
-                  )}
-                </div>
-              </article>
-            )
-          })}
+          {items.map((item) => (
+            <article key={item.favorite_id} className="list-row">
+              <div>
+                <h3>{item.session_title || `会话 #${item.session_id}`}</h3>
+                <MarkdownMessage text={item.content} />
+              </div>
+              <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+                <span className="time">{formatTime(item.created_at)}</span>
+                <button type="button" className="ghost-button" onClick={() => void onRemove(item)}>
+                  取消收藏
+                </button>
+              </div>
+            </article>
+          ))}
         </div>
       )}
     </div>

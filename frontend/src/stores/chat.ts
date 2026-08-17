@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import {
+  findSessionStatus,
   listMessages,
+  listSessions,
   type ChatMessage,
   type JournalPayload,
   type ToolCardPayload,
@@ -21,12 +23,6 @@ export type UiMessage = {
   cards?: UiCard[]
   isFavorite?: boolean
   streaming?: boolean
-}
-
-const WELCOME: UiMessage = {
-  key: 'welcome',
-  role: 'assistant',
-  text: '晚上好。我会认真听你说，也会尊重你不想说的部分。今天有什么一直放不下吗？',
 }
 
 function readStoredSessionId(): number | null {
@@ -50,36 +46,35 @@ export function toUiMessages(rows: ChatMessage[]): UiMessage[] {
 
 type ChatState = {
   sessionId: number | null
+  sessionStatus: 'active' | 'closed' | null
   messages: UiMessage[]
   sending: boolean
   error: string
-  endSession: boolean
   hydrated: boolean
   setDraftError: (error: string) => void
-  setEndSession: (v: boolean) => void
   setSending: (v: boolean) => void
   setMessages: (updater: UiMessage[] | ((prev: UiMessage[]) => UiMessage[])) => void
-  setSessionId: (id: number | null) => void
-  /** 首次进入陪伴页：恢复上次会话 */
+  setSessionId: (id: number | null, status?: 'active' | 'closed' | null) => void
+  setSessionStatus: (status: 'active' | 'closed' | null) => void
   hydrate: () => Promise<void>
-  /** 从历史回放指定会话 */
   openSession: (sessionId: number) => Promise<void>
   startNewSession: () => void
+  markClosedWithJournal: (journal: JournalPayload) => void
   clearError: () => void
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   sessionId: readStoredSessionId(),
-  messages: [WELCOME],
+  sessionStatus: null,
+  messages: [],
   sending: false,
   error: '',
-  endSession: false,
   hydrated: false,
 
   setDraftError: (error) => set({ error }),
-  setEndSession: (endSession) => set({ endSession }),
   setSending: (sending) => set({ sending }),
   clearError: () => set({ error: '' }),
+  setSessionStatus: (sessionStatus) => set({ sessionStatus }),
 
   setMessages: (updater) => {
     set((state) => ({
@@ -87,39 +82,47 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }))
   },
 
-  setSessionId: (id) => {
+  setSessionId: (id, status = 'active') => {
     if (id == null) sessionStorage.removeItem(SESSION_KEY)
     else sessionStorage.setItem(SESSION_KEY, String(id))
-    set({ sessionId: id })
+    set({ sessionId: id, sessionStatus: id == null ? null : status })
   },
 
   hydrate: async () => {
     if (get().hydrated) return
     const id = get().sessionId
     if (id == null) {
-      set({ hydrated: true, messages: get().messages.length ? get().messages : [WELCOME] })
+      set({ hydrated: true, messages: [] })
       return
     }
     try {
-      const rows = await listMessages(id)
+      const [rows, grouped] = await Promise.all([listMessages(id), listSessions()])
+      const status = findSessionStatus(grouped, id)
+      if (status == null) {
+        sessionStorage.removeItem(SESSION_KEY)
+        set({ sessionId: null, sessionStatus: null, messages: [], hydrated: true })
+        return
+      }
       set({
-        messages: rows.length ? toUiMessages(rows) : [WELCOME],
+        sessionStatus: status,
+        messages: toUiMessages(rows),
         hydrated: true,
       })
     } catch {
       sessionStorage.removeItem(SESSION_KEY)
-      set({ sessionId: null, messages: [WELCOME], hydrated: true })
+      set({ sessionId: null, sessionStatus: null, messages: [], hydrated: true })
     }
   },
 
   openSession: async (sessionId) => {
-    const rows = await listMessages(sessionId)
+    const [rows, grouped] = await Promise.all([listMessages(sessionId), listSessions()])
+    const status = findSessionStatus(grouped, sessionId) ?? 'closed'
     sessionStorage.setItem(SESSION_KEY, String(sessionId))
     set({
       sessionId,
-      messages: rows.length ? toUiMessages(rows) : [],
+      sessionStatus: status,
+      messages: toUiMessages(rows),
       error: '',
-      endSession: false,
       sending: false,
       hydrated: true,
     })
@@ -129,15 +132,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     sessionStorage.removeItem(SESSION_KEY)
     set({
       sessionId: null,
+      sessionStatus: null,
+      messages: [],
+      error: '',
+    })
+  },
+
+  markClosedWithJournal: (journal) => {
+    set((state) => ({
+      sessionStatus: 'closed',
       messages: [
+        ...state.messages,
         {
-          key: 'welcome',
+          key: `journal-${journal.journal_id}`,
           role: 'assistant',
-          text: '新的一页。你想从哪里开始？',
+          text: '本次会话已结束，并为你生成了情绪日记。',
+          cards: [{ kind: 'journal', payload: journal }],
         },
       ],
-      error: '',
-      endSession: false,
-    })
+    }))
   },
 }))

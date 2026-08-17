@@ -32,3 +32,5 @@ logs/
 *.parquet
 .cache/
 *.tsbuildinfo
+
+.playwright-mcp/

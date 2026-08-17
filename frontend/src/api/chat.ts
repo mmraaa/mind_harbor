@@ -9,6 +9,12 @@ export type ChatSession = {
   status: string
 }
 
+/** GET /chat/sessions 按状态分组 */
+export type SessionListGrouped = {
+  active: ChatSession[]
+  closed: ChatSession[]
+}
+
 export type ChatMessage = {
   id: number
   role: 'user' | 'assistant' | string
@@ -48,9 +54,21 @@ export type ChatStreamEvent =
   | { type: 'error'; payload: { message?: string; detail?: string } }
   | { type: string; payload: Record<string, unknown> }
 
-export async function listSessions(): Promise<ChatSession[]> {
-  const { data } = await api.get<ChatSession[]>('/chat/sessions')
-  return data
+export async function listSessions(): Promise<SessionListGrouped> {
+  const { data } = await api.get<SessionListGrouped>('/chat/sessions')
+  return {
+    active: data?.active ?? [],
+    closed: data?.closed ?? [],
+  }
+}
+
+export function findSessionStatus(
+  grouped: SessionListGrouped,
+  sessionId: number,
+): 'active' | 'closed' | null {
+  if (grouped.active.some((s) => s.id === sessionId)) return 'active'
+  if (grouped.closed.some((s) => s.id === sessionId)) return 'closed'
+  return null
 }
 
 export async function listMessages(sessionId: number): Promise<ChatMessage[]> {
@@ -58,9 +76,16 @@ export async function listMessages(sessionId: number): Promise<ChatMessage[]> {
   return data
 }
 
+/** POST /chat/sessions/{id}/end — 手动结束并生成日记 */
+export async function endSession(sessionId: number): Promise<JournalPayload> {
+  const { data } = await api.post<JournalPayload>(`/chat/sessions/${sessionId}/end`)
+  return data
+}
+
 export type StreamChatArgs = {
   content: string
   sessionId?: number | null
+  /** 仍支持 ChatRequest.end_session；优先推荐独立 endSession API */
   endSession?: boolean
   signal?: AbortSignal
   onEvent: (event: ChatStreamEvent) => void
@@ -92,7 +117,14 @@ export async function streamChat({
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(text || `聊天失败 (${res.status})`)
+    let message = text || `聊天失败 (${res.status})`
+    try {
+      const parsed = JSON.parse(text) as { detail?: string }
+      if (typeof parsed.detail === 'string') message = parsed.detail
+    } catch {
+      // keep raw
+    }
+    throw new Error(message)
   }
 
   if (!res.body) {

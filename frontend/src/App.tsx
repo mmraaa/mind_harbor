@@ -6,6 +6,7 @@ import ChatPage from './pages/student/ChatPage'
 import PracticePage from './pages/student/PracticePage'
 import FavoritesPage from './pages/student/FavoritesPage'
 import HistoryPage from './pages/student/HistoryPage'
+import JournalPage, { JournalDetailPage } from './pages/student/JournalPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import {
   CounselorsAdminPage,
@@ -27,8 +28,9 @@ function HomeRedirect() {
 }
 
 /**
- * 已对接后端：auth / chat(SSE) / sessions / favorites。
- * 管理端与咨询师端页面仍为原型（对应 API 尚未提供）。
+ * 对接 docs/openapi.json：
+ * auth(login/register/me) · chat(SSE/sessions 分组/messages/end) · journals · favorites
+ * 管理端与咨询师端仍为原型（无对应后端 API）。
  */
 export default function App() {
   return (
@@ -40,6 +42,8 @@ export default function App() {
         <Route element={<RequireAuth roles={['student']} />}>
           <Route path="/student" element={<StudentLayout />}>
             <Route index element={<ChatPage />} />
+            <Route path="journals" element={<JournalPage />} />
+            <Route path="journals/:id" element={<JournalDetailPage />} />
             <Route path="practice" element={<PracticePage />} />
             <Route path="favorites" element={<FavoritesPage />} />
             <Route path="history" element={<HistoryPage />} />
