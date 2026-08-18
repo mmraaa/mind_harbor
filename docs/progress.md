@@ -33,6 +33,16 @@
 
 ## 已完成
 
+### 2026-08-18 · 咨询师档案整合:移除会话质检页(分支 feature/frontend-tri-role)
+
+- **完成内容**:删除独立「会话质检」页面与导航;会话浏览/搜索/风险筛选/完整消息回放并入学生档案弹窗(`ArchiveBrowseModal`);档案页精简资料展示、日记与会话预览等高布局。
+- **接口变更(移除)**: `GET /counselor/stats/overview`、`GET /counselor/stats/sessions`、`GET /counselor/stats/sessions/{id}`;**保留** `GET /counselor/stats/sessions/{id}/messages`(档案弹窗回放)。
+- **涉及文件**:`backend/app/api/counselor/stats.py`、`backend/tests/test_counselor_stats.py`、`frontend/src/pages/counselor/CounselorPages.tsx`、`CounselorLayout.tsx`、`counselorStats.ts`、`app.css`;文档 `docs/api.md`、`docs/openapi.json`、`docs/progress.md`。
+- **测试**:`tests/test_counselor_stats.py` 5 passed;`pnpm build` 通过。
+- **commit**:`80922c6`
+- **评审结论**:未评审。
+- **遗留问题**:`risk_level` 运行时多为 `low`/`high`,`medium` 筛选可能为空;全量 pytest 仍受远程库影响。
+
 ### 2026-08-18 · 咨询师学生档案 + 会话回放(分支 feature/frontend-tri-role)
 
 - **完成内容**:学生档案展示基础信息与多日情绪折线图(7/14/30);导航调整为 SQL助手 → 学生档案 → 会话质检;档案近会话跳转质检并高亮居中,支持完整消息回放。
