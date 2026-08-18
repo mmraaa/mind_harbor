@@ -30,7 +30,8 @@ function HomeRedirect() {
 /**
  * 对接 docs/openapi.json：
  * auth(login/register/me) · chat(SSE/sessions 分组/messages/end) · journals · favorites
- * 咨询师端 SQL 助手对接 POST /counselor/chat（SSE）；会话质检/档案页仍为原型。
+ * 咨询师端 SQL 助手对接 POST /counselor/chat（SSE）；
+ * 学生档案 / 会话质检对接 /counselor/stats/*（含会话回放）。
  */
 export default function App() {
   return (

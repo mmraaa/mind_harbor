@@ -36,8 +36,45 @@ export type StudentSummary = {
   high_risk_sessions: number
 }
 
+export type EmotionTrendPoint = {
+  date: string
+  avg_intensity: number | null
+  count: number
+  top_category: string | null
+}
+
+export type StudentProfile = {
+  session_count: number
+  journal_count: number
+  high_risk_sessions: number
+  emotion_count: number
+  avg_intensity: number | null
+  latest_emotion: string | null
+  latest_intensity: number | null
+  latest_at: string | null
+}
+
+export type StudentSessionIndex = {
+  id: number
+  title: string
+  summary: string
+  risk_level: string
+  status: string
+  started_at: string | null
+  message_count: number
+}
+
 export type StudentDetail = {
-  student: { id: number; name: string; username: string; created_at: string | null }
+  student: {
+    id: number
+    name: string
+    username: string
+    role: string
+    created_at: string | null
+  }
+  profile: StudentProfile
+  days: number
+  emotion_trend: EmotionTrendPoint[]
   emotion_series: {
     id: number
     category: string
@@ -51,13 +88,7 @@ export type StudentDetail = {
     mood_score: number | null
     created_at: string | null
   }[]
-  sessions: {
-    id: number
-    title: string
-    risk_level: string
-    status: string
-    started_at: string | null
-  }[]
+  sessions: StudentSessionIndex[]
 }
 
 export type SessionQA = {
@@ -66,10 +97,20 @@ export type SessionQA = {
   student_name: string
   student_username: string
   title: string
+  summary: string
   risk_level: string
   status: string
   started_at: string | null
   message_count: number
+}
+
+export type SessionMessage = {
+  id: number
+  role: string
+  content: string
+  emotion_tags: unknown
+  tool_cards: unknown
+  created_at: string | null
 }
 
 export async function fetchOverview(days = 30): Promise<StatsOverview> {
@@ -96,7 +137,7 @@ export async function fetchStudents(
 
 export async function fetchStudentDetail(
   studentId: number,
-  days = 30,
+  days = 14,
 ): Promise<StudentDetail> {
   const { data } = await api.get<StudentDetail>(`/counselor/stats/students/${studentId}/detail`, {
     params: { days },
@@ -108,5 +149,17 @@ export async function fetchSessions(
   opts: { risk?: string; days?: number } = {},
 ): Promise<{ count: number; sessions: SessionQA[] }> {
   const { data } = await api.get('/counselor/stats/sessions', { params: opts })
+  return data
+}
+
+export async function fetchSession(sessionId: number): Promise<SessionQA> {
+  const { data } = await api.get<SessionQA>(`/counselor/stats/sessions/${sessionId}`)
+  return data
+}
+
+export async function fetchSessionMessages(
+  sessionId: number,
+): Promise<{ session_id: number; count: number; messages: SessionMessage[] }> {
+  const { data } = await api.get(`/counselor/stats/sessions/${sessionId}/messages`)
   return data
 }

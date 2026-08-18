@@ -15,8 +15,8 @@ from app.api.deps import require_roles
 from app.core.database import get_db
 from app.models.emotion import EMOTION_CATEGORIES, Emotion
 from app.models.emotion import Journal
-from app.models.session import ChatSession
-from app.models.user import User
+from app.models.session import ChatSession, Message
+from app.models.user import ROLE_STUDENT, User
 
 router = APIRouter(prefix="/counselor", tags=["counselor"])
 
@@ -37,6 +37,55 @@ def _cutoff(days: int) -> datetime:
 
 def _avg(values: list) -> float | None:
     return round(mean(values), 1) if values else None
+
+
+def _emotion_trend(emotions: list[Emotion], days: int) -> list[dict]:
+    """按日聚合平均强度,补齐窗口内每一天(无记录则为 null)。"""
+    by_day: dict[str, list[Emotion]] = {}
+    for e in emotions:
+        if e.created_at is None:
+            continue
+        by_day.setdefault(e.created_at.date().isoformat(), []).append(e)
+
+    points: list[dict] = []
+    start = (datetime.now() - timedelta(days=max(1, days) - 1)).date()
+    end = datetime.now().date()
+    cur = start
+    while cur <= end:
+        key = cur.isoformat()
+        items = by_day.get(key, [])
+        if items:
+            cats: dict[str, int] = {}
+            for e in items:
+                cats[e.category] = cats.get(e.category, 0) + 1
+            top = max(cats.items(), key=lambda kv: kv[1])[0]
+            points.append(
+                {
+                    "date": key,
+                    "avg_intensity": round(mean(e.intensity for e in items), 1),
+                    "count": len(items),
+                    "top_category": top,
+                }
+            )
+        else:
+            points.append({"date": key, "avg_intensity": None, "count": 0, "top_category": None})
+        cur += timedelta(days=1)
+    return points
+
+
+def _session_row(s: ChatSession, name: str, username: str, msg_count: int) -> dict:
+    return {
+        "id": s.id,
+        "student_id": s.user_id,
+        "student_name": name,
+        "student_username": username,
+        "title": s.title,
+        "summary": s.summary,
+        "risk_level": s.risk_level,
+        "status": s.status,
+        "started_at": _iso(s.started_at),
+        "message_count": msg_count,
+    }
 
 
 @router.get("/stats/overview")
@@ -141,9 +190,9 @@ def student_detail(
     user: User = Depends(require_roles("counselor", "admin")),
     db: Session = Depends(get_db),
 ) -> dict:
-    """学生详情:资料 + 情绪时间序列 + 日记列表 + 近期会话。"""
+    """学生详情:基本资料 + 档案统计 + 按日情绪趋势 + 日记 + 近期会话索引。"""
     u = db.get(User, student_id)
-    if u is None:
+    if u is None or u.role != ROLE_STUDENT:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "学生不存在")
 
     cutoff = _cutoff(days)
@@ -167,13 +216,46 @@ def student_detail(
         .limit(20)
         .all()
     )
+    latest = emotions[-1] if emotions else None
+    session_count = db.query(func.count(ChatSession.id)).filter_by(user_id=student_id).scalar() or 0
+    journal_count = db.query(func.count(Journal.id)).filter_by(user_id=student_id).scalar() or 0
+    high_risk_sessions = (
+        db.query(func.count(ChatSession.id)).filter_by(user_id=student_id, risk_level="high").scalar() or 0
+    )
+    session_items = []
+    for s in sessions:
+        msg_count = db.query(func.count(Message.id)).filter_by(session_id=s.id).scalar() or 0
+        session_items.append(
+            {
+                "id": s.id,
+                "title": s.title,
+                "summary": s.summary,
+                "risk_level": s.risk_level,
+                "status": s.status,
+                "started_at": _iso(s.started_at),
+                "message_count": msg_count,
+            }
+        )
     return {
         "student": {
             "id": u.id,
             "name": u.name,
             "username": u.username,
+            "role": u.role,
             "created_at": _iso(u.created_at),
         },
+        "profile": {
+            "session_count": session_count,
+            "journal_count": journal_count,
+            "high_risk_sessions": high_risk_sessions,
+            "emotion_count": len(emotions),
+            "avg_intensity": _avg([e.intensity for e in emotions]),
+            "latest_emotion": latest.category if latest else None,
+            "latest_intensity": latest.intensity if latest else None,
+            "latest_at": _iso(latest.created_at) if latest else None,
+        },
+        "days": days,
+        "emotion_trend": _emotion_trend(emotions, days),
         "emotion_series": [
             {
                 "id": e.id,
@@ -188,16 +270,7 @@ def student_detail(
             {"id": j.id, "summary": j.summary, "mood_score": j.mood_score, "created_at": _iso(j.created_at)}
             for j in journals
         ],
-        "sessions": [
-            {
-                "id": s.id,
-                "title": s.title,
-                "risk_level": s.risk_level,
-                "status": s.status,
-                "started_at": _iso(s.started_at),
-            }
-            for s in sessions
-        ],
+        "sessions": session_items,
     }
 
 
@@ -219,22 +292,56 @@ def sessions(
         q = q.filter(ChatSession.risk_level == "high")
     rows = q.order_by(ChatSession.id.desc()).limit(100).all()
 
-    from app.models.session import Message
-
     out = []
     for s, name, username in rows:
-        msg_count = db.query(func.count(Message.id)).filter_by(session_id=s.id).scalar()
-        out.append(
-            {
-                "id": s.id,
-                "student_id": s.user_id,
-                "student_name": name,
-                "student_username": username,
-                "title": s.title,
-                "risk_level": s.risk_level,
-                "status": s.status,
-                "started_at": _iso(s.started_at),
-                "message_count": msg_count,
-            }
-        )
+        msg_count = db.query(func.count(Message.id)).filter_by(session_id=s.id).scalar() or 0
+        out.append(_session_row(s, name, username, msg_count))
     return {"count": len(out), "sessions": out}
+
+
+@router.get("/stats/sessions/{session_id}")
+def session_detail(
+    session_id: int,
+    user: User = Depends(require_roles("counselor", "admin")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """单条会话元数据(含学生信息与消息数),供质检定位。"""
+    row = (
+        db.query(ChatSession, User.name, User.username)
+        .join(User, ChatSession.user_id == User.id)
+        .filter(ChatSession.id == session_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
+    s, name, username = row
+    msg_count = db.query(func.count(Message.id)).filter_by(session_id=s.id).scalar() or 0
+    return _session_row(s, name, username, msg_count)
+
+
+@router.get("/stats/sessions/{session_id}/messages")
+def session_messages(
+    session_id: int,
+    user: User = Depends(require_roles("counselor", "admin")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """质检回放:该会话全部消息(学生 / 助手)。"""
+    session = db.get(ChatSession, session_id)
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
+    rows = db.query(Message).filter_by(session_id=session_id).order_by(Message.id).all()
+    return {
+        "session_id": session_id,
+        "count": len(rows),
+        "messages": [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "emotion_tags": m.emotion_tags,
+                "tool_cards": m.tool_cards,
+                "created_at": _iso(m.created_at),
+            }
+            for m in rows
+        ],
+    }

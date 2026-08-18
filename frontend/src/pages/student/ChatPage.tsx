@@ -1,5 +1,5 @@
 import { Bookmark, BookmarkCheck } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { addFavorite, removeFavorite } from '../../api/favorites'
 import {
   endSession as endSessionApi,
@@ -36,24 +36,44 @@ export default function ChatPage() {
   const [draft, setDraft] = useState('')
   const [ending, setEnding] = useState(false)
   const [breathingModalOpen, setBreathingModalOpen] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const streamRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const stickToBottom = useRef(true)
 
   const readOnly = sessionStatus === 'closed'
+
+  const scrollStreamToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const el = streamRef.current
+    if (!el) return
+    el.scrollTo({ top: el.scrollHeight, behavior })
+  }, [])
 
   useEffect(() => {
     void hydrate()
   }, [hydrate])
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, sending])
+    const el = streamRef.current
+    if (!el) return
+    const onScroll = () => {
+      stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    if (stickToBottom.current) {
+      scrollStreamToBottom('smooth')
+    }
+  }, [messages, sending, scrollStreamToBottom])
 
   async function send(text: string) {
     const content = text.trim()
     if (!content || sending || readOnly) return
 
     clearError()
+    stickToBottom.current = true
     setSending(true)
     setDraft('')
 
@@ -192,7 +212,7 @@ export default function ChatPage() {
           </div>
         </header>
 
-        <div className="companion-stream" aria-live="polite">
+        <div ref={streamRef} className="companion-stream" aria-live="polite">
           {messages.map((m) => (
             <article key={m.key} className={`msg msg--${m.role}`}>
               {m.role === 'assistant' && (
@@ -227,7 +247,6 @@ export default function ChatPage() {
               )}
             </article>
           ))}
-          <div ref={bottomRef} />
         </div>
 
         <div className="companion-dock">
