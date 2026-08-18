@@ -1,26 +1,20 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpenText,
-  CircleAlert,
   MessageSquareQuote,
   Search,
-  ShieldAlert,
   Sparkles,
+  X,
 } from 'lucide-react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
 import { streamCounselorChat } from '../../api/counselorChat'
 import { getErrorMessage } from '../../api/client'
 import {
-  fetchOverview,
-  fetchSession,
   fetchSessionMessages,
-  fetchSessions,
   fetchStudentDetail,
   fetchStudents,
   type SessionMessage,
-  type SessionQA,
-  type StatsOverview,
   type StudentDetail,
+  type StudentSessionIndex,
   type StudentSummary,
 } from '../../api/counselorStats'
 import { emotionDisplay } from '../../data/emotions'
@@ -54,8 +48,10 @@ function riskLabel(sessions: number): 'high' | 'low' {
   return sessions > 0 ? 'high' : 'low'
 }
 
-function riskTone(level: string | null | undefined) {
-  return level === 'high' ? 'high' : 'calm'
+function sessionRiskText(level: string | null | undefined) {
+  if (level === 'high') return '高风险'
+  if (level === 'medium') return '中风险'
+  return '低风险'
 }
 
 function CounselorHeader({
@@ -89,24 +85,6 @@ function StatusPill({
   children: ReactNode
 }) {
   return <span className={`counselor-pill counselor-pill--${tone}`}>{children}</span>
-}
-
-function StatBand({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string | number
-  note: string
-}) {
-  return (
-    <article className="counselor-stat">
-      <p className="counselor-stat__label">{label}</p>
-      <strong className="counselor-stat__value">{value}</strong>
-      <p className="counselor-stat__note">{note}</p>
-    </article>
-  )
 }
 
 function PanelTitle({
@@ -347,57 +325,70 @@ export function SqlAgentPage() {
   )
 }
 
-export function SessionsPage() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const targetId = Number(searchParams.get('session') || '') || null
-  const [overview, setOverview] = useState<StatsOverview | null>(null)
-  const [sessions, setSessions] = useState<SessionQA[]>([])
-  const [riskFilter, setRiskFilter] = useState<'all' | 'high'>('all')
-  const [selectedId, setSelectedId] = useState<number | null>(targetId)
+function matchesQuery(haystack: string, query: string) {
+  if (!query.trim()) return true
+  return haystack.toLowerCase().includes(query.trim().toLowerCase())
+}
+
+type StudentJournal = StudentDetail['journals'][number]
+type ArchiveBrowseKind = 'journals' | 'sessions'
+
+type SessionRiskFilter = 'all' | 'low' | 'medium' | 'high'
+
+function ArchiveBrowseModal({
+  kind,
+  studentName,
+  journals,
+  sessions,
+  onClose,
+}: {
+  kind: ArchiveBrowseKind
+  studentName: string
+  journals: StudentJournal[]
+  sessions: StudentSessionIndex[]
+  onClose: () => void
+}) {
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('all')
+  const [riskFilter, setRiskFilter] = useState<SessionRiskFilter>('all')
+  const [pickedJournalId, setPickedJournalId] = useState<number | null>(journals[0]?.id ?? null)
+  const [pickedSessionId, setPickedSessionId] = useState<number | null>(sessions[0]?.id ?? null)
   const [messages, setMessages] = useState<SessionMessage[]>([])
   const [msgLoading, setMsgLoading] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const cardRefs = useRef<Record<number, HTMLButtonElement | null>>({})
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const [ov, sess] = await Promise.all([
-        fetchOverview(30),
-        fetchSessions({ risk: riskFilter, days: 30 }),
-      ])
-      let items = sess.sessions
-      const focusId = Number(searchParams.get('session') || '') || null
-      if (focusId && !items.some((s) => s.id === focusId)) {
-        try {
-          const extra = await fetchSession(focusId)
-          items = [extra, ...items]
-        } catch {
-          /* 目标会话不存在时仍展示列表 */
-        }
-      }
-      setOverview(ov)
-      setSessions(items)
-      setSelectedId((prev) => {
-        if (focusId) return focusId
-        if (prev != null && items.some((s) => s.id === prev)) return prev
-        return items[0]?.id ?? null
-      })
-    } catch (err) {
-      setError(getErrorMessage(err, '无法加载会话数据'))
-    } finally {
-      setLoading(false)
-    }
-  }, [riskFilter, searchParams])
+  const filteredJournals = useMemo(
+    () =>
+      journals.filter((j) =>
+        matchesQuery(`${j.summary} ${j.content} ${j.mood_score ?? ''}`, search),
+      ),
+    [journals, search],
+  )
+  const filteredSessions = useMemo(
+    () =>
+      sessions.filter((s) => {
+        if (!matchesQuery(`${s.title} ${s.summary}`, search)) return false
+        if (statusFilter === 'active' && s.status !== 'active') return false
+        if (statusFilter === 'closed' && s.status !== 'closed') return false
+        if (riskFilter !== 'all' && s.risk_level !== riskFilter) return false
+        return true
+      }),
+    [sessions, search, statusFilter, riskFilter],
+  )
 
   useEffect(() => {
-    void load()
-  }, [load])
+    if (kind !== 'journals') return
+    if (pickedJournalId != null && filteredJournals.some((j) => j.id === pickedJournalId)) return
+    setPickedJournalId(filteredJournals[0]?.id ?? null)
+  }, [kind, filteredJournals, pickedJournalId])
 
   useEffect(() => {
-    if (selectedId == null) {
+    if (kind !== 'sessions') return
+    if (pickedSessionId != null && filteredSessions.some((s) => s.id === pickedSessionId)) return
+    setPickedSessionId(filteredSessions[0]?.id ?? null)
+  }, [kind, filteredSessions, pickedSessionId])
+
+  useEffect(() => {
+    if (kind !== 'sessions' || pickedSessionId == null) {
       setMessages([])
       return
     }
@@ -405,10 +396,10 @@ export function SessionsPage() {
     setMsgLoading(true)
     ;(async () => {
       try {
-        const data = await fetchSessionMessages(selectedId)
+        const data = await fetchSessionMessages(pickedSessionId)
         if (alive) setMessages(data.messages)
-      } catch (err) {
-        if (alive) setError(getErrorMessage(err, '无法加载会话消息'))
+      } catch {
+        if (alive) setMessages([])
       } finally {
         if (alive) setMsgLoading(false)
       }
@@ -416,155 +407,220 @@ export function SessionsPage() {
     return () => {
       alive = false
     }
-  }, [selectedId])
+  }, [kind, pickedSessionId])
 
   useEffect(() => {
-    if (selectedId == null) return
-    const el = cardRefs.current[selectedId]
-    el?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [selectedId, sessions])
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prev
+    }
+  }, [onClose])
 
-  function selectSession(id: number) {
-    setSelectedId(id)
-    setSearchParams({ session: String(id) }, { replace: true })
-  }
-
-  const selected = sessions.find((s) => s.id === selectedId) ?? null
+  const pickedJournal = journals.find((j) => j.id === pickedJournalId) ?? null
+  const pickedSession = sessions.find((s) => s.id === pickedSessionId) ?? null
+  const isJournals = kind === 'journals'
 
   return (
-    <div className="counselor-page">
-      <CounselorHeader
-        eyebrow="QA"
-        title="会话记录质检"
-        description="跨学生查看近期会话。点开一条即可回放学生与助手的全部对话，并核对危机话术。"
-        meta={
-          <>
-            <StatusPill tone={riskFilter === 'high' ? 'high' : 'neutral'}>
-              {riskFilter === 'high' ? '仅高风险' : '全部会话'}
-            </StatusPill>
-            <StatusPill tone="live">{loading ? '载入中' : '已同步'}</StatusPill>
-          </>
-        }
-      />
-
-      <div className="counselor-stats">
-        <StatBand label="总会话" value={overview?.sessions ?? '—'} note="最近 30 天纳入质检的全部会话" />
-        <StatBand label="进行中" value={overview?.active_sessions ?? '—'} note="仍在陪伴中的对话，适合连续观察" />
-        <StatBand label="高风险" value={overview?.high_risk_sessions ?? '—'} note="需优先复核危机话术与转介提示" />
-      </div>
-
-      <section className="counselor-shell counselor-shell--qa">
-        <aside className="counselor-rail">
-          <div className="counselor-panel counselor-panel--soft">
-            <PanelTitle icon={ShieldAlert} eyebrow="Triage filter" title="风险分诊" note="先按风险收窄，再点开会话回放。" />
-            <div className="counselor-filter-row">
-              <button
-                type="button"
-                className={`ghost-button${riskFilter === 'all' ? ' ghost-button--active' : ''}`}
-                onClick={() => setRiskFilter('all')}
-              >
-                全部会话
-              </button>
-              <button
-                type="button"
-                className={`ghost-button${riskFilter === 'high' ? ' ghost-button--active' : ''}`}
-                onClick={() => setRiskFilter('high')}
-              >
-                高风险优先
-              </button>
-            </div>
+    <div className="archive-browse" role="dialog" aria-modal="true">
+      <button type="button" className="archive-browse__backdrop" aria-label="关闭" onClick={onClose} />
+      <section className="archive-browse__panel">
+        <header className="archive-browse__head">
+          <div>
+            <p className="archive-browse__eyebrow">{isJournals ? 'Journal archive' : 'Session archive'}</p>
+            <h2>
+              {studentName} · {isJournals ? '情绪日记' : '近期会话'}
+            </h2>
           </div>
-        </aside>
+          <button type="button" className="archive-browse__close" onClick={onClose} aria-label="关闭">
+            <X size={18} />
+          </button>
+        </header>
 
-        <section className="counselor-workbench">
-          {error && <p className="archive-alert">{error}</p>}
-          {loading ? (
-            <p className="archive-loading">正在载入会话…</p>
-          ) : sessions.length === 0 ? (
-            <div className="counselor-empty">
-              <CircleAlert size={20} />
-              <div>
-                <h3>当前筛选下没有会话</h3>
-                <p>可以切回全部会话，或稍后再同步新的会话数据。</p>
-              </div>
+        <div className="archive-browse__body">
+          <aside className="archive-browse__list">
+            <label className="field-label" htmlFor="archive-browse-search">
+              {isJournals ? '搜索日记' : '搜索会话'}
+            </label>
+            <div className="archive-search__row">
+              <Search size={18} aria-hidden />
+              <input
+                id="archive-browse-search"
+                className="text-input"
+                placeholder={isJournals ? '按摘要、正文或得分搜索…' : '按标题、摘要关键词搜索…'}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
-          ) : (
-            <div className="counselor-session-list">
-              {sessions.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  ref={(el) => {
-                    cardRefs.current[s.id] = el
-                  }}
-                  className={`counselor-session-card counselor-session-card--${riskTone(s.risk_level)}${
-                    s.id === selectedId ? ' counselor-session-card--active' : ''
-                  }`}
-                  onClick={() => selectSession(s.id)}
-                >
-                  <div className="counselor-session-card__bar" />
-                  <div className="counselor-session-card__body">
-                    <div className="counselor-session-card__head">
-                      <div>
-                        <p className="counselor-session-card__eyebrow">{s.student_name}</p>
-                        <h3>{s.title}</h3>
-                      </div>
-                      <time>{formatShort(s.started_at)}</time>
-                    </div>
-                    <div className="counselor-session-card__meta">
-                      <StatusPill tone={s.risk_level === 'high' ? 'high' : 'neutral'}>
-                        {s.risk_level === 'high' ? '高风险' : '常规'}
-                      </StatusPill>
-                      <StatusPill tone={s.status === 'active' ? 'live' : 'neutral'}>
-                        {s.status === 'active' ? '进行中' : '已结束'}
-                      </StatusPill>
-                      <span className="counselor-session-card__count">{s.message_count} 条消息</span>
-                    </div>
+            {!isJournals ? (
+              <div className="archive-browse__filters">
+                <div className="archive-browse__filter-group">
+                  <span className="archive-browse__filter-label">进行状态</span>
+                  <div className="counselor-filter-row">
+                    <button
+                      type="button"
+                      className={`ghost-button${statusFilter === 'all' ? ' ghost-button--active' : ''}`}
+                      onClick={() => setStatusFilter('all')}
+                    >
+                      全部
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost-button${statusFilter === 'active' ? ' ghost-button--active' : ''}`}
+                      onClick={() => setStatusFilter('active')}
+                    >
+                      进行中
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost-button${statusFilter === 'closed' ? ' ghost-button--active' : ''}`}
+                      onClick={() => setStatusFilter('closed')}
+                    >
+                      已结束
+                    </button>
                   </div>
-                </button>
-              ))}
+                </div>
+                <div className="archive-browse__filter-group">
+                  <span className="archive-browse__filter-label">风险等级</span>
+                  <div className="counselor-filter-row">
+                    <button
+                      type="button"
+                      className={`ghost-button${riskFilter === 'all' ? ' ghost-button--active' : ''}`}
+                      onClick={() => setRiskFilter('all')}
+                    >
+                      全部
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost-button${riskFilter === 'low' ? ' ghost-button--active' : ''}`}
+                      onClick={() => setRiskFilter('low')}
+                    >
+                      低风险
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost-button${riskFilter === 'medium' ? ' ghost-button--active' : ''}`}
+                      onClick={() => setRiskFilter('medium')}
+                    >
+                      中风险
+                    </button>
+                    <button
+                      type="button"
+                      className={`ghost-button${riskFilter === 'high' ? ' ghost-button--active' : ''}`}
+                      onClick={() => setRiskFilter('high')}
+                    >
+                      高风险
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            <div className="archive-browse__items">
+              {isJournals ? (
+                filteredJournals.length === 0 ? (
+                  <p className="archive-empty__text">没有匹配的日记。</p>
+                ) : (
+                  filteredJournals.map((j) => (
+                    <button
+                      key={j.id}
+                      type="button"
+                      className={`archive-browse__item${j.id === pickedJournalId ? ' archive-browse__item--active' : ''}`}
+                      onClick={() => setPickedJournalId(j.id)}
+                    >
+                      <strong>{j.summary || '未命名日记'}</strong>
+                      <span>
+                        情绪得分 {j.mood_score ?? '—'} / 10 · {formatShort(j.created_at)}
+                      </span>
+                    </button>
+                  ))
+                )
+              ) : filteredSessions.length === 0 ? (
+                <p className="archive-empty__text">没有匹配的会话。</p>
+              ) : (
+                filteredSessions.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`archive-browse__item${s.id === pickedSessionId ? ' archive-browse__item--active' : ''}`}
+                    onClick={() => setPickedSessionId(s.id)}
+                  >
+                    <strong>{s.title}</strong>
+                    <span>
+                      {s.status === 'active' ? '进行中' : '已结束'}
+                      {` · ${sessionRiskText(s.risk_level)}`}
+                      {s.message_count ? ` · ${s.message_count} 条` : ''}
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
-          )}
-        </section>
+          </aside>
 
-        <aside className="counselor-insight">
-          <div className="counselor-panel counselor-panel--sticky counselor-panel--replay">
-            <PanelTitle
-              icon={MessageSquareQuote}
-              eyebrow="Session replay"
-              title={selected ? `${selected.student_name} · 会话回放` : '会话回放'}
-              note={selected ? selected.title : '从左侧点开一条会话后，这里展示全部对话。'}
-            />
-            {!selected ? (
-              <p className="archive-empty__text">选择一条会话后，这里会回放学生与助手的全部消息。</p>
-            ) : msgLoading ? (
-              <p className="archive-loading">正在载入对话…</p>
-            ) : messages.length === 0 ? (
-              <p className="archive-empty__text">该会话还没有消息。</p>
+          <div className="archive-browse__detail">
+            {isJournals ? (
+              !pickedJournal ? (
+                <p className="archive-empty__text">选择一篇日记后，这里会展示完整正文。</p>
+              ) : (
+                <article className="archive-browse__journal">
+                  <header>
+                    <h3>{pickedJournal.summary || '未命名日记'}</h3>
+                    <p>
+                      情绪得分 {pickedJournal.mood_score ?? '—'} / 10
+                      {pickedJournal.created_at ? ` · ${formatShort(pickedJournal.created_at)}` : ''}
+                    </p>
+                  </header>
+                  <div className="archive-browse__journal-body">
+                    {pickedJournal.content?.trim() ? pickedJournal.content : '这篇日记还没有正文。'}
+                  </div>
+                </article>
+              )
+            ) : !pickedSession ? (
+              <p className="archive-empty__text">选择一条会话后，这里会展示对话内容。</p>
             ) : (
-              <div className="counselor-replay">
-                {messages.map((m) => (
-                  <article key={m.id} className={`counselor-replay__msg counselor-replay__msg--${m.role}`}>
-                    <div className="counselor-replay__meta">
-                      <span>{m.role === 'assistant' ? '助手' : m.role === 'user' ? '学生' : m.role}</span>
-                      <time>{formatShort(m.created_at)}</time>
-                    </div>
-                    <div className="counselor-replay__bubble">
-                      {m.role === 'assistant' ? <MarkdownMessage text={m.content} /> : m.content}
-                    </div>
-                  </article>
-                ))}
+              <div className="archive-browse__session">
+                <header>
+                  <div>
+                    <h3>{pickedSession.title}</h3>
+                    <p>
+                      {pickedSession.status === 'active' ? '进行中' : '已结束'}
+                      {pickedSession.summary ? ` · ${pickedSession.summary}` : ''}
+                    </p>
+                  </div>
+                </header>
+                {msgLoading ? (
+                  <p className="archive-loading">正在载入对话…</p>
+                ) : messages.length === 0 ? (
+                  <p className="archive-empty__text">该会话还没有消息。</p>
+                ) : (
+                  <div className="counselor-replay archive-browse__replay">
+                    {messages.map((m) => (
+                      <article key={m.id} className={`counselor-replay__msg counselor-replay__msg--${m.role}`}>
+                        <div className="counselor-replay__meta">
+                          <span>{m.role === 'assistant' ? '助手' : m.role === 'user' ? '学生' : m.role}</span>
+                          <time>{formatShort(m.created_at)}</time>
+                        </div>
+                        <div className="counselor-replay__bubble">
+                          {m.role === 'assistant' ? <MarkdownMessage text={m.content} /> : m.content}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        </aside>
+        </div>
       </section>
     </div>
   )
 }
 
 export function StudentArchivePage() {
-  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [riskFilter, setRiskFilter] = useState<'all' | 'high'>('all')
   const [days, setDays] = useState(14)
@@ -574,6 +630,7 @@ export function StudentArchivePage() {
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
+  const [browseKind, setBrowseKind] = useState<ArchiveBrowseKind | null>(null)
 
   const loadStudents = useCallback(async () => {
     setLoading(true)
@@ -593,6 +650,7 @@ export function StudentArchivePage() {
       } else {
         setActiveId(null)
         setDetail(null)
+        setBrowseKind(null)
       }
     } catch (err) {
       setError(getErrorMessage(err, '无法加载学生列表'))
@@ -634,10 +692,16 @@ export function StudentArchivePage() {
   const student = detail?.student
   const trendPoints = detail?.emotion_trend ?? []
   const recordedDays = trendPoints.filter((p) => p.count > 0).length
-  const lastPoint = [...trendPoints].reverse().find((p) => p.avg_intensity != null)
+  const periodAvg = useMemo(() => {
+    const recorded = trendPoints.filter((p) => p.avg_intensity != null && p.count > 0)
+    if (recorded.length === 0) return null
+    const totalCount = recorded.reduce((sum, p) => sum + p.count, 0)
+    const weighted = recorded.reduce((sum, p) => sum + (p.avg_intensity as number) * p.count, 0)
+    return Math.round((weighted / totalCount) * 10) / 10
+  }, [trendPoints])
   const trendSummary =
     recordedDays > 0
-      ? `近 ${days} 天中 ${recordedDays} 天有记录，最近均强 ${lastPoint?.avg_intensity ?? '—'}`
+      ? `近 ${days} 天中 ${recordedDays} 天有记录，平均强度 ${periodAvg ?? '—'}`
       : `近 ${days} 天暂无情绪强度数据`
 
   return (
@@ -646,14 +710,6 @@ export function StudentArchivePage() {
         eyebrow="ARCHIVE"
         title="学生心理档案"
         description="查看学生基本资料、近多日情绪变化，并从会话索引跳转到质检回放。"
-        meta={
-          <>
-            <StatusPill>{students.length} 名学生</StatusPill>
-            <StatusPill tone={riskFilter === 'high' ? 'high' : 'neutral'}>
-              {riskFilter === 'high' ? '需关注' : '全部学生'}
-            </StatusPill>
-          </>
-        }
       />
 
       <section className="counselor-shell counselor-shell--archive">
@@ -707,7 +763,10 @@ export function StudentArchivePage() {
                       className={`archive-student archive-student--dossier${
                         s.id === activeId ? ' archive-student--active' : ''
                       }`}
-                      onClick={() => setActiveId(s.id)}
+                      onClick={() => {
+                        setActiveId(s.id)
+                        setBrowseKind(null)
+                      }}
                     >
                       <span className="archive-student__name">
                         {s.name}
@@ -739,26 +798,10 @@ export function StudentArchivePage() {
             <>
               <div className="counselor-panel">
                 <PanelTitle icon={BookOpenText} eyebrow="Student profile" title="基本信息" />
-                <dl className="counselor-profile-grid">
+                <dl className="counselor-profile-grid counselor-profile-grid--archive">
                   <div>
                     <dt>姓名</dt>
                     <dd>{student.name || '—'}</dd>
-                  </div>
-                  <div>
-                    <dt>用户名</dt>
-                    <dd>{student.username}</dd>
-                  </div>
-                  <div>
-                    <dt>用户 ID</dt>
-                    <dd>{student.id}</dd>
-                  </div>
-                  <div>
-                    <dt>角色</dt>
-                    <dd>学生</dd>
-                  </div>
-                  <div>
-                    <dt>注册时间</dt>
-                    <dd>{formatShort(student.created_at) || '—'}</dd>
                   </div>
                   <div>
                     <dt>会话数</dt>
@@ -772,6 +815,16 @@ export function StudentArchivePage() {
                     <dt>高风险会话</dt>
                     <dd>{profile.high_risk_sessions}</dd>
                   </div>
+                  <div>
+                    <dt>最近情绪</dt>
+                    <dd>
+                      {emotionDisplay(profile.latest_emotion).emoji} {emotionDisplay(profile.latest_emotion).label}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>近 {days} 天记录</dt>
+                    <dd>{profile.emotion_count} 条</dd>
+                  </div>
                 </dl>
               </div>
 
@@ -783,17 +836,23 @@ export function StudentArchivePage() {
                     title={`${student.name} · 情绪变化`}
                     note={trendSummary}
                   />
-                  <div className="counselor-filter-row">
-                    {[7, 14, 30].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        className={`ghost-button${days === n ? ' ghost-button--active' : ''}`}
-                        onClick={() => setDays(n)}
-                      >
-                        {n} 天
-                      </button>
-                    ))}
+                  <div className="counselor-trend-head__aside">
+                    <div className="counselor-trend-avg">
+                      <span>平均强度</span>
+                      <strong>{periodAvg ?? '—'}</strong>
+                    </div>
+                    <div className="counselor-filter-row">
+                      {[7, 14, 30].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          className={`ghost-button${days === n ? ' ghost-button--active' : ''}`}
+                          onClick={() => setDays(n)}
+                        >
+                          {n} 天
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
                 {trendPoints.some((p) => p.count > 0) ? (
@@ -804,11 +863,20 @@ export function StudentArchivePage() {
               </div>
 
               <div className="counselor-record-grid">
-                <div className="counselor-panel">
-                  <PanelTitle icon={BookOpenText} eyebrow="Journal excerpts" title="情绪日记" />
+                <button
+                  type="button"
+                  className="counselor-panel counselor-panel--journal counselor-peek"
+                  onClick={() => setBrowseKind('journals')}
+                >
+                  <PanelTitle
+                    icon={BookOpenText}
+                    eyebrow="Journal excerpts"
+                    title="情绪日记"
+                    note="点击打开完整日记与搜索"
+                  />
                   {detail.journals.length > 0 ? (
-                    <div className="list-panel">
-                      {detail.journals.map((j) => (
+                    <div className="list-panel list-panel--top counselor-peek__list">
+                      {detail.journals.slice(0, 3).map((j) => (
                         <article key={j.id} className="list-row list-row--counselor">
                           <div>
                             <h3>{j.summary}</h3>
@@ -821,24 +889,23 @@ export function StudentArchivePage() {
                   ) : (
                     <p className="archive-empty__text">暂无日记记录。</p>
                   )}
-                </div>
+                </button>
 
-                <div className="counselor-panel">
+                <button
+                  type="button"
+                  className="counselor-panel counselor-peek"
+                  onClick={() => setBrowseKind('sessions')}
+                >
                   <PanelTitle
                     icon={MessageSquareQuote}
                     eyebrow="Session index"
                     title="近期会话"
-                    note="点击条目会跳到会话质检并高亮回放。"
+                    note="点击打开会话内容与搜索"
                   />
                   {detail.sessions.length > 0 ? (
-                    <div className="list-panel">
-                      {detail.sessions.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          className="list-row list-row--counselor list-row--link"
-                          onClick={() => navigate(`/counselor/sessions?session=${s.id}`)}
-                        >
+                    <div className="list-panel counselor-peek__list">
+                      {detail.sessions.slice(0, 3).map((s) => (
+                        <article key={s.id} className="list-row list-row--counselor">
                           <div>
                             <h3>{s.title}</h3>
                             <p>
@@ -848,51 +915,31 @@ export function StudentArchivePage() {
                           </div>
                           <div className="counselor-inline-meta">
                             <StatusPill tone={s.risk_level === 'high' ? 'high' : 'neutral'}>
-                              {s.risk_level === 'high' ? '高风险' : '常规'}
+                              {sessionRiskText(s.risk_level)}
                             </StatusPill>
                             <span className="time">{formatShort(s.started_at)}</span>
                           </div>
-                        </button>
+                        </article>
                       ))}
                     </div>
                   ) : (
                     <p className="archive-empty__text">暂无近期会话。</p>
                   )}
-                </div>
+                </button>
               </div>
             </>
           ) : null}
         </section>
-
-        {student && profile ? (
-          <aside className="counselor-insight">
-            <div className="counselor-panel counselor-panel--sticky counselor-panel--folio">
-              <PanelTitle icon={BookOpenText} eyebrow="Student folio" title={`${student.name} · 学生封套`} />
-              <div className="counselor-facts counselor-facts--stack">
-                <div>
-                  <span>最近情绪</span>
-                  <strong>
-                    {emotionDisplay(profile.latest_emotion).emoji} {emotionDisplay(profile.latest_emotion).label}
-                  </strong>
-                </div>
-                <div>
-                  <span>近 {days} 天记录</span>
-                  <strong>{profile.emotion_count} 条</strong>
-                </div>
-                <div>
-                  <span>平均强度</span>
-                  <strong>{profile.avg_intensity ?? '—'}</strong>
-                </div>
-              </div>
-              <div className="counselor-note">
-                {profile.high_risk_sessions > 0
-                  ? `存在 ${profile.high_risk_sessions} 个高风险会话，可从近期会话索引跳转质检。`
-                  : '近期未出现高风险会话，可继续关注情绪变化与日记频率。'}
-              </div>
-            </div>
-          </aside>
-        ) : null}
       </section>
+      {browseKind && student && detail ? (
+        <ArchiveBrowseModal
+          kind={browseKind}
+          studentName={student.name}
+          journals={detail.journals}
+          sessions={detail.sessions}
+          onClose={() => setBrowseKind(null)}
+        />
+      ) : null}
     </div>
   )
 }

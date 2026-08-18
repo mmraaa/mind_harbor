@@ -73,44 +73,6 @@ def _emotion_trend(emotions: list[Emotion], days: int) -> list[dict]:
     return points
 
 
-def _session_row(s: ChatSession, name: str, username: str, msg_count: int) -> dict:
-    return {
-        "id": s.id,
-        "student_id": s.user_id,
-        "student_name": name,
-        "student_username": username,
-        "title": s.title,
-        "summary": s.summary,
-        "risk_level": s.risk_level,
-        "status": s.status,
-        "started_at": _iso(s.started_at),
-        "message_count": msg_count,
-    }
-
-
-@router.get("/stats/overview")
-def overview(
-    days: int = 30,
-    user: User = Depends(require_roles("counselor", "admin")),
-    db: Session = Depends(get_db),
-) -> dict:
-    """总览卡片:学生/会话/风险/日记/情绪数 与 平均强度。"""
-    cutoff = _cutoff(days)
-    emotions = db.query(Emotion).filter(Emotion.created_at >= cutoff).all()
-    high_risk_sessions = db.query(ChatSession).filter(ChatSession.risk_level == "high").count()
-    return {
-        "days": days,
-        "students": db.query(User).filter_by(role="student").count(),
-        "sessions": db.query(ChatSession).count(),
-        "active_sessions": db.query(ChatSession).filter_by(status="active").count(),
-        "closed_sessions": db.query(ChatSession).filter_by(status="closed").count(),
-        "high_risk_sessions": high_risk_sessions,
-        "journals": db.query(Journal).count(),
-        "emotions_in_window": len(emotions),
-        "avg_intensity": _avg([e.intensity for e in emotions]),
-    }
-
-
 @router.get("/stats/emotion-distribution")
 def emotion_distribution(
     days: int = 30,
@@ -267,56 +229,17 @@ def student_detail(
             for e in emotions
         ],
         "journals": [
-            {"id": j.id, "summary": j.summary, "mood_score": j.mood_score, "created_at": _iso(j.created_at)}
+            {
+                "id": j.id,
+                "summary": j.summary,
+                "content": j.content,
+                "mood_score": j.mood_score,
+                "created_at": _iso(j.created_at),
+            }
             for j in journals
         ],
         "sessions": session_items,
     }
-
-
-@router.get("/stats/sessions")
-def sessions(
-    risk: str = "all",  # all / high
-    days: int = 30,
-    user: User = Depends(require_roles("counselor", "admin")),
-    db: Session = Depends(get_db),
-) -> dict:
-    """会话列表(可按风险过滤):含学生信息与消息数。"""
-    cutoff = _cutoff(days)
-    q = (
-        db.query(ChatSession, User.name, User.username)
-        .join(User, ChatSession.user_id == User.id)
-        .filter(ChatSession.started_at >= cutoff)
-    )
-    if risk == "high":
-        q = q.filter(ChatSession.risk_level == "high")
-    rows = q.order_by(ChatSession.id.desc()).limit(100).all()
-
-    out = []
-    for s, name, username in rows:
-        msg_count = db.query(func.count(Message.id)).filter_by(session_id=s.id).scalar() or 0
-        out.append(_session_row(s, name, username, msg_count))
-    return {"count": len(out), "sessions": out}
-
-
-@router.get("/stats/sessions/{session_id}")
-def session_detail(
-    session_id: int,
-    user: User = Depends(require_roles("counselor", "admin")),
-    db: Session = Depends(get_db),
-) -> dict:
-    """单条会话元数据(含学生信息与消息数),供质检定位。"""
-    row = (
-        db.query(ChatSession, User.name, User.username)
-        .join(User, ChatSession.user_id == User.id)
-        .filter(ChatSession.id == session_id)
-        .first()
-    )
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
-    s, name, username = row
-    msg_count = db.query(func.count(Message.id)).filter_by(session_id=s.id).scalar() or 0
-    return _session_row(s, name, username, msg_count)
 
 
 @router.get("/stats/sessions/{session_id}/messages")
@@ -325,7 +248,7 @@ def session_messages(
     user: User = Depends(require_roles("counselor", "admin")),
     db: Session = Depends(get_db),
 ) -> dict:
-    """质检回放:该会话全部消息(学生 / 助手)。"""
+    """会话消息回放:该会话全部消息(学生 / 助手)。"""
     session = db.get(ChatSession, session_id)
     if session is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
