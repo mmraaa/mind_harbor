@@ -1,0 +1,1127 @@
+# Review package: 4bf559ec959ab60bc0d239b6c783ccd08c097108..5e75f75
+
+## Commits
+5e75f75 feat: dialogue loop with emotion journal chain
+
+## Files changed
+ backend/app/adapters/llm.py    | 204 ++++++++++++++++++++++++++++
+ backend/app/ai/dialogue.py     | 171 +++++++++++++++++++++++
+ backend/app/ai/emotion.py      |  96 +++++++++++++
+ backend/app/ai/journal.py      |  98 ++++++++++++++
+ backend/app/ai/memory.py       | 108 +++++++++++++++
+ backend/app/api/chat.py        |  47 +++++++
+ backend/app/main.py            |   3 +-
+ backend/app/schemas/chat.py    |   9 ++
+ backend/tests/test_dialogue.py | 299 +++++++++++++++++++++++++++++++++++++++++
+ 9 files changed, 1034 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/backend/app/adapters/llm.py b/backend/app/adapters/llm.py
+new file mode 100644
+index 0000000..1fe3e1c
+--- /dev/null
++++ b/backend/app/adapters/llm.py
+@@ -0,0 +1,204 @@
++"""LLM 适配层:所有大模型调用只经此模块,禁止直连具体供应商。
++
++OpenAI 兼容 chat completions 协议:
++    POST {base_url}/chat/completions
++    Authorization: Bearer {api_key}
++    {"model": ..., "messages": [...], "stream": ...}
++
++提供:
++- `stream_chat`:流式生成(对话 SSE 增量,OpenAI SSE 协议);
++- `complete_json`:结构化 JSON 输出(情绪识别 / 日记生成),解析失败自动兜底重试;
++- `complete_text`:一次性整段文本(记忆摘要等)。
++
++配置字段来自 `app.core.config.Settings`:`llm_api_key` / `llm_base_url` / `llm_model`
++(环境变量 `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`);key 缺失抛清晰 RuntimeError。
++"""
++
++import json
++import re
++from typing import Iterator
++
++import httpx
++
++from app.core.config import get_settings
++
++LLM_TIMEOUT_SECONDS = 120
++_JSON_ONLY_SYSTEM = "请只输出 JSON 对象本身,不要输出任何解释、前言或 markdown 代码围栏。"
++
++
++def _client_config() -> tuple[str, str, str]:
++    """校验配置并返回 (api_key, base_url, model);缺失抛清晰错误。"""
++    s = get_settings()
++    if not s.llm_api_key:
++        raise RuntimeError("LLM 未配置:请设置环境变量 LLM_API_KEY")
++    if not s.llm_base_url:
++        raise RuntimeError("LLM 未配置:请设置环境变量 LLM_BASE_URL")
++    if not s.llm_model:
++        raise RuntimeError("LLM 未配置:请设置环境变量 LLM_MODEL")
++    return s.llm_api_key, s.llm_base_url, s.llm_model
++
++
++def _chat_url(base_url: str) -> str:
++    return base_url.rstrip("/") + "/chat/completions"
++
++
++def _headers(api_key: str) -> dict:
++    return {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
++
++
++def _chat_completion(payload: dict) -> str:
++    """非流式 chat completions 请求,返回首条 message.content(已 strip)。"""
++    api_key, base_url, _ = _client_config()
++    resp = httpx.post(
++        _chat_url(base_url),
++        headers=_headers(api_key),
++        json=payload,
++        timeout=LLM_TIMEOUT_SECONDS,
++    )
++    resp.raise_for_status()
++    data = resp.json()
++    choices = data.get("choices") or []
++    if not choices:
++        raise RuntimeError("LLM 返回为空(no choices)")
++    return (choices[0].get("message") or {}).get("content", "").strip()
++
++
++def _extract_json(text: str) -> dict | None:
++    """从 LLM 输出中稳健提取 JSON 对象:去代码围栏 → 直接解析 → 找首个平衡 {} 块。"""
++    if not text:
++        return None
++    cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", text)
++    cleaned = re.sub(r"\s*```$", "", cleaned).strip()
++    try:
++        obj = json.loads(cleaned)
++        return obj if isinstance(obj, dict) else None
++    except json.JSONDecodeError:
++        pass
++
++    start = cleaned.find("{")
++    if start == -1:
++        return None
++    depth = 0
++    in_str = False
++    escaped = False
++    for i in range(start, len(cleaned)):
++        ch = cleaned[i]
++        if in_str:
++            if escaped:
++                escaped = False
++            elif ch == "\\":
++                escaped = True
++            elif ch == '"':
++                in_str = False
++            continue
++        if ch == '"':
++            in_str = True
++        elif ch == "{":
++            depth += 1
++        elif ch == "}":
++            depth -= 1
++            if depth == 0:
++                try:
++                    obj = json.loads(cleaned[start : i + 1])
++                    return obj if isinstance(obj, dict) else None
++                except json.JSONDecodeError:
++                    return None
++    return None
++
++
++def stream_chat(
++    messages: list[dict],
++    *,
++    temperature: float = 0.7,
++    max_tokens: int | None = None,
++) -> Iterator[str]:
++    """流式对话生成,逐增量 yield 文本片段(OpenAI SSE 协议)。
++
++    Raises:
++        RuntimeError: 配置缺失 / 上游返回非 2xx / 流为空。
++    """
++    api_key, base_url, model = _client_config()
++    payload: dict = {
++        "model": model,
++        "messages": messages,
++        "stream": True,
++        "temperature": temperature,
++    }
++    if max_tokens:
++        payload["max_tokens"] = max_tokens
++
++    with httpx.stream(
++        "POST",
++        _chat_url(base_url),
++        headers=_headers(api_key),
++        json=payload,
++        timeout=httpx.Timeout(LLM_TIMEOUT_SECONDS, read=300.0),
++    ) as resp:
++        resp.raise_for_status()
++        for line in resp.iter_lines():
++            if not line or not line.startswith("data:"):
++                continue
++            data = line[len("data:"):].strip()
++            if data == "[DONE]":
++                break
++            chunk = json.loads(data)
++            choices = chunk.get("choices") or []
++            if not choices:
++                continue
++            delta = (choices[0].get("delta") or {}).get("content")
++            if delta:
++                yield delta
++
++
++def complete_text(
++    system: str,
++    user: str,
++    *,
++    temperature: float = 0.3,
++    max_tokens: int | None = None,
++) -> str:
++    """一次性文本生成(记忆摘要等),返回去除首尾空白后的整段文本。"""
++    payload: dict = {
++        "model": _client_config()[2],
++        "messages": [
++            {"role": "system", "content": system},
++            {"role": "user", "content": user},
++        ],
++        "stream": False,
++        "temperature": temperature,
++    }
++    if max_tokens:
++        payload["max_tokens"] = max_tokens
++    return _chat_completion(payload)
++
++
++def complete_json(system: str, user: str, *, temperature: float = 0.2) -> dict:
++    """结构化 JSON 输出:response_format json_object + schema 提示词。
++
++    解析失败兜底:重试一次(追加"只输出 JSON"指令);仍失败抛 RuntimeError。
++    """
++    payload: dict = {
++        "model": _client_config()[2],
++        "messages": [
++            {"role": "system", "content": system},
++            {"role": "user", "content": user},
++        ],
++        "stream": False,
++        "temperature": temperature,
++        "response_format": {"type": "json_object"},
++    }
++
++    parsed = _extract_json(_chat_completion(payload))
++    if parsed is not None:
++        return parsed
++
++    # 兜底:重试一次,只要求 JSON 对象
++    retry = dict(payload)
++    retry["messages"] = [
++        {"role": "system", "content": system + "\n" + _JSON_ONLY_SYSTEM},
++        {"role": "user", "content": user},
++    ]
++    parsed = _extract_json(_chat_completion(retry))
++    if parsed is not None:
++        return parsed
++    raise RuntimeError("LLM 结构化输出解析失败(已自动重试),请稍后重试")
+diff --git a/backend/app/ai/dialogue.py b/backend/app/ai/dialogue.py
+new file mode 100644
+index 0000000..60b9499
+--- /dev/null
++++ b/backend/app/ai/dialogue.py
+@@ -0,0 +1,171 @@
++"""对话控制器:识别 → 风险 → 记忆 → 提示词 → LLM 流式 → 写 Message → (日记闭环)。
++
++对外产生 SSE 事件 dict 流,事件格式:
++    {"type": "text"|"tool_card"|"journal"|"error", "payload": {...}}
++格式化成 `data: {json}\n\n` 由 `app/api/chat.py` 负责。
++"""
++
++from typing import Iterator
++
++from fastapi import HTTPException, status
++from sqlalchemy.orm import Session
++
++from app.adapters import llm
++from app.ai import emotion, journal, memory
++from app.ai.emotion import RISK_REPLY_TEMPLATE
++from app.ai.rag import search as rag_search
++from app.models.emotion import Emotion
++from app.models.session import ChatSession, Message
++from app.models.user import User
++from app.schemas.chat import ChatRequest
++
++SYSTEM_PROMPT = (
++    "你是 MindHarbor,面向大学生的 AI 心理咨询与情感陪伴助手。"
++    "请用温暖、共情、不评判的语气陪伴用户,用中文回应。"
++    "结合【知识参考】回答知识类问题;涉及心理危机(自伤/自杀念头)时,"
++    "务必引导用户联系危机干预热线 400-161-9995 或校内心理咨询中心。"
++    "不做诊断,不承诺保密,回复简洁自然(一般不超过 200 字)。"
++)
++
++RISK_CARD = {
++    "type": "crisis",
++    "hotline": "400-161-9995",
++    "note": "心理危机干预热线 / 校内心理咨询中心(工作时间可直接预约)",
++}
++
++
++def get_or_create_session(db: Session, user: User, session_id: int | None) -> ChatSession:
++    """校验或创建会话;非本人会话 403,不存在 404。"""
++    if session_id is None:
++        session = ChatSession(user_id=user.id)
++        db.add(session)
++        db.commit()
++        db.refresh(session)
++        return session
++    session = db.get(ChatSession, session_id)
++    if session is None:
++        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
++    if session.user_id != user.id:
++        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
++    return session
++
++
++def _load_messages(db: Session, session_id: int) -> list[Message]:
++    return db.query(Message).filter_by(session_id=session_id).order_by(Message.id).all()
++
++
++def _sse(evt_type: str, payload: dict) -> dict:
++    return {"type": evt_type, "payload": payload}
++
++
++def chat_stream(
++    db: Session,
++    user: User,
++    session: ChatSession,
++    body: ChatRequest,
++) -> Iterator[dict]:
++    """一次对话主流程:情绪识别 → 风险筛查 → 记忆拼装 → LLM 流式回复 → 写 Message。
++
++    - 风险命中:直接输出风险模板(text) + 危机卡片(tool_card),会话 risk_level=high;
++    - RAG 命中:追加来源引用 tool_card;
++    - end_session=True:生成情绪日记(Journal+Emotion 原子落库)并输出 journal 卡片。
++    """
++    content = body.content.strip()
++    if not content:
++        yield _sse("error", {"message": "消息内容不能为空"})
++        return
++
++    prev = _load_messages(db, session.id)
++    if not prev and session.title == "新会话":
++        session.title = content[:20]
++        db.add(session)
++
++    # 1) 用户消息落库
++    db.add(Message(session_id=session.id, role="user", content=content))
++    db.flush()
++
++    # 2) 情绪识别 + 风险筛查
++    emo = emotion.analyze(content)
++    if emo.is_risk:
++        session.risk_level = "high"
++        db.add(
++            Message(
++                session_id=session.id,
++                role="assistant",
++                content=RISK_REPLY_TEMPLATE,
++                emotion_tags=[emo.category],
++            )
++        )
++        db.commit()
++        yield _sse("text", {"content": RISK_REPLY_TEMPLATE})
++        yield _sse("tool_card", RISK_CARD)
++        if body.end_session:
++            yield from _finish_session(db, user, session)
++        return
++
++    # 3) RAG 检索 + 记忆拼装
++    hits = rag_search.search(content, top_k=3, db=db)
++    msgs = _load_messages(db, session.id)
++    context = memory.assemble_context(session, msgs, user.id, db, rag_hits=hits)
++
++    # 4) LLM 流式生成 + 增量 text 事件
++    prompt = SYSTEM_PROMPT + "\n\n" + context
++    chunks = []
++    for delta in llm.stream_chat(
++        [{"role": "system", "content": prompt}, {"role": "user", "content": content}]
++    ):
++        chunks.append(delta)
++        yield _sse("text", {"content": delta})
++    reply = "".join(chunks).strip()
++
++    # 5) 工具卡片(知识引用来源)
++    tool_cards = None
++    if hits:
++        tool_cards = [
++            {"type": "sources", "sources": [{"title": h.doc_title, "text": h.text[:200]} for h in hits]}
++        ]
++        yield _sse("tool_card", tool_cards[0])
++
++    # 6) 助手消息落库 + 记忆更新
++    db.add(
++        Message(
++            session_id=session.id,
++            role="assistant",
++            content=reply,
++            emotion_tags=[emo.category],
++            tool_cards=tool_cards,
++        )
++    )
++    memory.update(session, _load_messages(db, session.id), user.id, db)
++    db.commit()
++
++    # 7) 会话结束 → 情绪日记闭环
++    if body.end_session:
++        yield from _finish_session(db, user, session)
++
++
++def _finish_session(db: Session, user: User, session: ChatSession) -> Iterator[dict]:
++    """会话收尾:LLM 生成情绪日记(Journal+Emotion 原子落库)并输出 journal 卡片事件。"""
++    try:
++        j = journal.generate(session.id, db, user.id)
++    except Exception as exc:  # noqa: BLE001  LLM 失败不应中断整个流
++        yield _sse("error", {"message": f"日记生成失败:{exc}"})
++        return
++    session.status = "closed"
++    db.commit()
++
++    emo = db.query(Emotion).filter_by(journal_id=j.id).first()
++    payload: dict = {
++        "journal_id": j.id,
++        "summary": j.summary,
++        "content": j.content,
++        "mood_score": j.mood_score,
++    }
++    if emo is not None:
++        payload["emotion"] = {
++            "category": emo.category,
++            "intensity": emo.intensity,
++            "stress_source": emo.stress_source,
++            "support_need": emo.support_need,
++        }
++    yield _sse("journal", payload)
+diff --git a/backend/app/ai/emotion.py b/backend/app/ai/emotion.py
+new file mode 100644
+index 0000000..1fe6f1e
+--- /dev/null
++++ b/backend/app/ai/emotion.py
+@@ -0,0 +1,96 @@
++"""情绪识别 + 风险筛查。
++
++风险筛查 = 危机关键词库(快速通道,不调 LLM)+ LLM 判定(结构化输出 is_risk);
++任一通道命中 → 返回风险模板并标记会话 risk_level=high(由对话控制器执行)。
++
++情绪类别固定枚举 EMOTION_CATEGORIES(铁律)来自 `app/models/emotion.py`,非法类别回落 calm。
++"""
++
++from dataclasses import dataclass
++
++from app.adapters import llm
++from app.models.emotion import EMOTION_CATEGORIES
++
++# 危机关键词库:自伤 / 自杀类关键词,命中即高风险(快速通道)
++RISK_KEYWORDS = [
++    "自杀", "自残", "轻生", "想死", "不想活", "活不下去", "结束生命",
++    "伤害自己", "割腕", "跳楼", "安眠药", "离开这个世界", "解脱",
++]
++
++# 风险回复模板(设计文档附录 B):温和 + 危机热线 + 校园求助渠道
++RISK_REPLY_TEMPLATE = (
++    "我注意到你现在可能很难受。请先做几个深呼吸——你并不孤单,有很多方式可以帮你度过这一刻。\n"
++    "建议你尽快联系身边的支持力量:危机干预热线 **400-161-9995**,或校内心理咨询中心(工作时间可直接预约)。\n"
++    "如果你有伤害自己的想法,请务必立刻联系以上渠道,也可以直接告诉我,我陪着你,但专业帮助更重要。"
++)
++
++EMOTION_SYSTEM_PROMPT = (
++    "你是 MindHarbor 的情绪识别引擎。请识别用户消息中的情绪并输出 JSON,"
++    f"category 必须是以下之一:{EMOTION_CATEGORIES};"
++    "intensity 为 1-10 的整数;stress_source 为压力来源(中文,无则空串);"
++    "support_need 为用户需要的支持(中文,无则空串);"
++    "is_risk 为布尔,表示消息是否含自伤/自杀等危机信号;risk_reason 为风险原因(无风险则为空串)。"
++    "只输出 JSON 对象。"
++)
++
++
++@dataclass
++class EmotionResult:
++    """情绪识别结果;is_risk=True 时对话控制器须触发风险模板并标记会话 risk_level=high。"""
++
++    category: str = "calm"
++    intensity: int = 1
++    stress_source: str | None = None
++    support_need: str | None = None
++    is_risk: bool = False
++    risk_reason: str | None = None
++
++
++def _clamp_int(value, lo: int = 1, hi: int = 10, default: int = 1) -> int:
++    try:
++        return max(lo, min(hi, int(value)))
++    except (TypeError, ValueError):
++        return default
++
++
++def _short(value, limit: int = 200) -> str | None:
++    """短文本清洗:空 → None;超长截断(列 String(256))。"""
++    if not value:
++        return None
++    value = str(value).strip()
++    return value if len(value) <= limit else value[:limit]
++
++
++def analyze(text: str) -> EmotionResult:
++    """情绪识别 + 风险筛查:关键词快速通道 → LLM 结构化判定。
++
++    LLM 输出逐字段校验并兜底:非法类别回落 calm、intensity 收敛到 1-10、
++    is_risk 为真时携带 risk_reason。
++    """
++    hit = next((k for k in RISK_KEYWORDS if k in text), None)
++    if hit:
++        return EmotionResult(
++            category="sad",
++            intensity=8,
++            stress_source="危机信号",
++            support_need="紧急支持",
++            is_risk=True,
++            risk_reason=f"命中危机关键词「{hit}」",
++        )
++
++    data = llm.complete_json(EMOTION_SYSTEM_PROMPT, text)
++
++    category = data.get("category") or "calm"
++    if category not in EMOTION_CATEGORIES:
++        category = "calm"
++
++    is_risk = bool(data.get("is_risk")) or bool(data.get("risk_flags"))
++    reason = data.get("risk_reason") or data.get("risk_reasoning") or ""
++    return EmotionResult(
++        category=category,
++        intensity=_clamp_int(data.get("intensity", 1)),
++        stress_source=_short(data.get("stress_source")),
++        support_need=_short(data.get("support_need")),
++        is_risk=is_risk,
++        risk_reason=reason or None,
++    )
+diff --git a/backend/app/ai/journal.py b/backend/app/ai/journal.py
+new file mode 100644
+index 0000000..ec04e9d
+--- /dev/null
++++ b/backend/app/ai/journal.py
+@@ -0,0 +1,98 @@
++"""情绪日记生成(会话结束闭环)。
++
++LLM 一次调用产出 {journal_summary, journal_content, mood_score, emotion:{...}},
++在同一事务原子写 Journal + Emotion(journal_id 关联)。
++铁律:情绪记录只在生成日记时产出 —— Emotion 表写入仅发生在此模块。
++
++同时把日记摘要回写 ChatSession.summary(长会话压缩)。
++"""
++
++from sqlalchemy.orm import Session
++
++from app.adapters import llm
++from app.models.emotion import EMOTION_CATEGORIES, Emotion, Journal
++from app.models.session import ChatSession, Message
++
++JOURNAL_SYSTEM_PROMPT = (
++    "你是 MindHarbor 的情绪日记生成引擎。请基于下面的会话记录,以「用户的第一人称」写一篇情绪日记,输出 JSON:"
++    '{"journal_summary": "一句话摘要(20字以内)",'
++    '"journal_content": "日记正文(150-300字,温暖、接纳、不评判)",'
++    '"mood_score": 1-10 的整数(1 最差,10 最好),'
++    f'"emotion": {{"category": {EMOTION_CATEGORIES} 之一, "intensity": 1-10, '
++    '"stress_source": 压力来源或空串, "support_need": 需要的支持或空串}}。'
++    "只输出 JSON 对象。"
++)
++
++
++def _clamp_int(value, lo: int = 1, hi: int = 10, default: int = 5) -> int:
++    try:
++        return max(lo, min(hi, int(value)))
++    except (TypeError, ValueError):
++        return default
++
++
++def _short(value, limit: int = 200) -> str | None:
++    if not value:
++        return None
++    value = str(value).strip()
++    return value if len(value) <= limit else value[:limit]
++
++
++def generate(session_id: int, db: Session, user_id: int) -> Journal:
++    """生成情绪日记 + 关联情绪记录(同一事务原子写入)。
++
++    Raises:
++        ValueError: 会话不存在 / LLM 输出缺摘要或正文。
++    """
++    session = db.get(ChatSession, session_id)
++    if session is None:
++        raise ValueError(f"会话不存在: {session_id}")
++    messages = (
++        db.query(Message).filter_by(session_id=session_id).order_by(Message.id).all()
++    )
++    transcript = "\n".join(f"{m.role}: {m.content}" for m in messages)
++    if not transcript.strip():
++        transcript = "(空会话)"
++
++    data = llm.complete_json(JOURNAL_SYSTEM_PROMPT, transcript)
++
++    summary = (data.get("journal_summary") or "").strip()
++    content = (data.get("journal_content") or "").strip()
++    if not summary or not content:
++        raise ValueError("日记生成失败:LLM 输出缺少摘要或正文")
++
++    emo = data.get("emotion") or {}
++    category = emo.get("category") or "calm"
++    if category not in EMOTION_CATEGORIES:
++        category = "calm"
++
++    try:
++        journal = Journal(
++            user_id=user_id,
++            session_id=session_id,
++            summary=summary[:2000],
++            content=content[:5000],
++            mood_score=_clamp_int(data.get("mood_score", 5)),
++        )
++        db.add(journal)
++        db.flush()  # 拿到 journal.id 供 Emotion 关联
++        db.add(
++            Emotion(
++                user_id=user_id,
++                journal_id=journal.id,
++                session_id=session_id,
++                category=category,
++                intensity=_clamp_int(emo.get("intensity", 1)),
++                stress_source=_short(emo.get("stress_source")),
++                support_need=_short(emo.get("support_need")),
++            )
++        )
++        # 摘要回写会话(长会话压缩,供后续对话使用)
++        session.summary = summary[:500]
++        db.commit()
++    except Exception:
++        db.rollback()
++        raise
++
++    db.refresh(journal)
++    return journal
+diff --git a/backend/app/ai/memory.py b/backend/app/ai/memory.py
+new file mode 100644
+index 0000000..e4960ba
+--- /dev/null
++++ b/backend/app/ai/memory.py
+@@ -0,0 +1,108 @@
++"""上下文记忆管理。
++
++- 短期窗口:最近 N 轮 Message(默认 10);
++- 会话摘要:ChatSession.summary(长会话 > 2N 且尚无摘要 → LLM 压缩生成);
++- 长期画像:UserMemory(fact, 按 importance 取前若干)+ Emotion 聚合(近期情绪分布);
++- `assemble_context` 按「长期记忆 → 会话摘要 → 近期对话 → 知识参考」拼接提示词上下文。
++
++隐私约束(设计文档):仅沉淀对话中明确且非敏感的信息;危机/敏感内容不进入长期记忆。
++"""
++
++import re
++from collections import Counter
++
++from sqlalchemy.orm import Session
++
++from app.adapters import llm
++from app.models.emotion import Emotion
++from app.models.memory import UserMemory
++from app.models.session import ChatSession, Message
++
++SHORT_TERM_WINDOW = 10  # 短期记忆窗口(轮数)
++SUMMARY_THRESHOLD = SHORT_TERM_WINDOW * 2  # 超过该轮数且无摘要 → 压缩
++
++SUMMARY_SYSTEM_PROMPT = (
++    "你是 MindHarbor 的会话摘要引擎。请把下面的对话压缩成 3-5 句话的第三人称摘要,"
++    "保留:用户身份信息、主要话题、情绪变化、已给出的建议与用户反馈。只输出摘要正文,不要加标题。"
++)
++
++# 规则抽取的长期画像事实模式(不调 LLM):名字 / 年级专业
++FACT_PATTERNS = [
++    re.compile(r"我叫([一-龥]{2,8})(?:,|，|。| |$)"),
++    re.compile(r"我是(.{1,20}?(?:专业|大一|大二|大三|大四|研究生|毕业生))"),
++]
++
++
++def _long_term_profile(db: Session, user_id: int) -> str:
++    """长期画像:UserMemory 事实 + 近期 Emotion 聚合(主情绪 + 平均强度)。"""
++    lines = []
++    facts = (
++        db.query(UserMemory)
++        .filter_by(user_id=user_id)
++        .order_by(UserMemory.importance.desc(), UserMemory.id.desc())
++        .limit(10)
++        .all()
++    )
++    if facts:
++        lines.append("用户画像:" + " ; ".join(f.content for f in facts))
++
++    emotions = (
++        db.query(Emotion)
++        .filter(Emotion.user_id == user_id)
++        .order_by(Emotion.id.desc())
++        .limit(20)
++        .all()
++    )
++    if emotions:
++        top_cat, _ = Counter(e.category for e in emotions).most_common(1)[0]
++        avg = round(sum(e.intensity for e in emotions) / len(emotions), 1)
++        lines.append(f"近期情绪:以「{top_cat}」为主(近 {len(emotions)} 条),平均强度 {avg}")
++    return "\n".join(lines)
++
++
++def assemble_context(
++    session: ChatSession,
++    messages: list[Message],
++    user_id: int,
++    db: Session,
++    rag_hits: list | None = None,
++) -> str:
++    """拼装对话上下文(供 system 提示词):长期画像 + 会话摘要 + 短期窗口 + 知识参考。"""
++    parts = []
++    profile = _long_term_profile(db, user_id)
++    if profile:
++        parts.append("【长期记忆】\n" + profile)
++    if session.summary:
++        parts.append("【会话摘要】\n" + session.summary)
++    recent = messages[-SHORT_TERM_WINDOW:]
++    if recent:
++        parts.append("【近期对话】\n" + "\n".join(f"{m.role}: {m.content}" for m in recent))
++    if rag_hits:
++        refs = [f"[{h.doc_title}] {h.text[:200]}" for h in rag_hits]
++        parts.append("【知识参考】\n" + "\n".join(refs))
++    return "\n\n".join(parts)
++
++
++def update(session: ChatSession, messages: list[Message], user_id: int, db: Session) -> None:
++    """更新记忆(每轮对话后调用):
++
++    1. 长会话摘要压缩:消息数 >= SUMMARY_THRESHOLD 且无摘要 → LLM 生成存 ChatSession.summary;
++    2. 规则抽取事实沉淀到 UserMemory(fact, 去重, 不调 LLM)。
++    """
++    if len(messages) >= SUMMARY_THRESHOLD and not session.summary:
++        transcript = "\n".join(f"{m.role}: {m.content}" for m in messages)
++        session.summary = llm.complete_text(SUMMARY_SYSTEM_PROMPT, transcript)
++        db.add(session)
++
++    for msg in messages[-SHORT_TERM_WINDOW:]:
++        if msg.role != "user":
++            continue
++        for pat in FACT_PATTERNS:
++            m = pat.search(msg.content)
++            if not m:
++                continue
++            content = m.group(0)
++            exists = db.query(UserMemory).filter_by(user_id=user_id, content=content).first()
++            if not exists:
++                db.add(UserMemory(user_id=user_id, memory_type="fact", content=content, source="chat"))
++            break  # 每条消息只沉淀一条事实
+diff --git a/backend/app/api/chat.py b/backend/app/api/chat.py
+new file mode 100644
+index 0000000..9ef02ea
+--- /dev/null
++++ b/backend/app/api/chat.py
+@@ -0,0 +1,47 @@
++"""聊天 API:POST /api/v1/chat 返回 SSE 流。
++
++SSE 事件格式(ruling,必须遵守):
++    每事件一行 `data: {"type": "<type>", "payload": {...}}`,后跟一个空行(`\n\n`)。
++type 枚举:text(回复增量/整段)、tool_card(工具卡片)、journal(会话结束日记卡片)、error。
++"""
++
++import json
++
++from fastapi import APIRouter, Depends
++from fastapi.responses import StreamingResponse
++from sqlalchemy.orm import Session
++
++from app.ai import dialogue
++from app.api.deps import get_current_user
++from app.core.database import get_db
++from app.models.user import User
++from app.schemas.chat import ChatRequest
++
++router = APIRouter(prefix="/chat", tags=["chat"])
++
++
++def _format_event(evt: dict) -> str:
++    return f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
++
++
++@router.post("")
++def chat(
++    body: ChatRequest,
++    user: User = Depends(get_current_user),
++    db: Session = Depends(get_db),
++) -> StreamingResponse:
++    """发起一次对话;返回 text / tool_card / journal / error 事件流。"""
++    session = dialogue.get_or_create_session(db, user, body.session_id)
++
++    def gen():
++        try:
++            for evt in dialogue.chat_stream(db, user, session, body):
++                yield _format_event(evt)
++        except Exception as exc:  # noqa: BLE001  兜底:不因内部错误中断流
++            yield _format_event({"type": "error", "payload": {"message": str(exc)}})
++
++    return StreamingResponse(
++        gen(),
++        media_type="text/event-stream",
++        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
++    )
+diff --git a/backend/app/main.py b/backend/app/main.py
+index 1f53134..1c07a8c 100644
+--- a/backend/app/main.py
++++ b/backend/app/main.py
+@@ -1,22 +1,23 @@
+ from fastapi import FastAPI
+ from fastapi.middleware.cors import CORSMiddleware
+ 
+-from app.api import auth, health
++from app.api import auth, chat, health
+ from app.core.config import get_settings
+ from app.core.logging import setup_logging
+ 
+ setup_logging()
+ settings = get_settings()
+ 
+ app = FastAPI(title=settings.app_name)
+ 
+ app.add_middleware(
+     CORSMiddleware,
+     allow_origins=settings.cors_origins,
+     allow_credentials=True,
+     allow_methods=["*"],
+     allow_headers=["*"],
+ )
+ 
+ app.include_router(health.router, prefix=settings.api_prefix)
+ app.include_router(auth.router, prefix=settings.api_prefix)
++app.include_router(chat.router, prefix=settings.api_prefix)
+diff --git a/backend/app/schemas/chat.py b/backend/app/schemas/chat.py
+new file mode 100644
+index 0000000..d65a9b7
+--- /dev/null
++++ b/backend/app/schemas/chat.py
+@@ -0,0 +1,9 @@
++from pydantic import BaseModel, Field
++
++
++class ChatRequest(BaseModel):
++    """聊天请求;end_session=True 表示本轮为会话收尾,触发情绪日记闭环。"""
++
++    session_id: int | None = Field(default=None, description="已有会话 id;缺省创建新会话")
++    content: str = Field(min_length=1, description="用户消息内容")
++    end_session: bool = Field(default=False, description="是否结束会话并生成情绪日记")
+diff --git a/backend/tests/test_dialogue.py b/backend/tests/test_dialogue.py
+new file mode 100644
+index 0000000..c8074b5
+--- /dev/null
++++ b/backend/tests/test_dialogue.py
+@@ -0,0 +1,299 @@
++"""对话主流程 + 情绪日记闭环测试(Task 5)。
++
++约定:
++- LLM 一律 monkeypatch `app.adapters.llm`(complete_json / stream_chat / complete_text),不真实打 API;
++- RAG 的 `search` 也 patch(避免真实 embedding / Milvus);
++- 数据库经 `conftest.py` 的 client/db fixture 切到 mindharbor_test。
++"""
++
++import json
++
++import pytest
++
++from app.adapters import llm as llm_mod
++from app.ai.rag import search as rag_search_mod
++from app.ai.rag.search import ChunkHit
++from app.models.emotion import Emotion, Journal
++from app.models.memory import UserMemory
++from app.models.session import ChatSession, Message
++from app.models.user import User
++
++
++def _login(client, username="stu1", password="pass123"):
++    r = client.post("/api/v1/auth/login", json={"username": username, "password": password})
++    assert r.status_code == 200
++    return r.json()["access_token"]
++
++
++def _headers(token):
++    return {"Authorization": f"Bearer {token}"}
++
++
++# ---------- 假 LLM / 假 RAG ----------
++
++
++def fake_complete_json(system: str, user: str, **kw) -> dict:
++    """按 prompt 分支:情绪识别 / 日记生成,返回各自结构化 JSON。"""
++    if "日记" in system:
++        return {
++            "journal_summary": "聊了考试焦虑与应对方法",
++            "journal_content": "今天我和 MindHarbor 聊了考试前的焦虑。心跳很快,注意力不太集中。AI 陪我分析了原因,还分享了拆解复习计划的正念呼吸方法。感觉没那么慌了,也有了具体的行动方向。",
++            "mood_score": 5,
++            "emotion": {"category": "anxious", "intensity": 6, "stress_source": "期末考试", "support_need": "学习方法建议"},
++        }
++    return {
++        "category": "anxious",
++        "intensity": 6,
++        "stress_source": "期末考试",
++        "support_need": "鼓励",
++        "is_risk": False,
++        "risk_reason": "",
++    }
++
++
++def fake_stream_chat(messages, **kw):
++    for t in ["我", "理解", "你的焦虑"]:
++        yield t
++
++
++def fake_search(query, top_k=5, keyword=None, **kw):
++    return [ChunkHit(text="考试焦虑可通过拆分复习计划与正念呼吸缓解。", doc_title="考试焦虑应对")]
++
++
++@pytest.fixture
++def patch_ai(monkeypatch):
++    monkeypatch.setattr(llm_mod, "complete_json", fake_complete_json)
++    monkeypatch.setattr(llm_mod, "stream_chat", fake_stream_chat)
++    monkeypatch.setattr(llm_mod, "complete_text", lambda *a, **k: "测试摘要")
++    monkeypatch.setattr(rag_search_mod, "search", fake_search)
++
++
++def _parse_sse(resp_text: str) -> list[dict]:
++    """解析 SSE 文本 → 事件 dict 列表。"""
++    events = []
++    for line in resp_text.splitlines():
++        if line.startswith("data: "):
++            events.append(json.loads(line[len("data: "):]))
++    return events
++
++
++# ---------- 主流程:识别 → 流式回复 → 落库 ----------
++
++
++def test_chat_creates_session_streams_reply_and_persists(client, seed_user, patch_ai, db):
++    token = _login(client)
++    r = client.post("/api/v1/chat", json={"content": "最近考试压力好大"}, headers=_headers(token))
++    assert r.status_code == 200
++    assert "text/event-stream" in r.headers["content-type"]
++
++    events = _parse_sse(r.text)
++    assert [e["payload"]["content"] for e in events if e["type"] == "text"] == ["我", "理解", "你的焦虑"]
++    sources = [e for e in events if e["type"] == "tool_card"]
++    assert sources and sources[0]["payload"]["type"] == "sources"
++
++    session = db.query(ChatSession).one()
++    assert session.user_id == seed_user.id
++    assert session.status == "active"
++    assert session.title  # 首条消息自动命名
++
++    msgs = db.query(Message).order_by(Message.id).all()
++    assert [m.role for m in msgs] == ["user", "assistant"]
++    assert msgs[0].content == "最近考试压力好大"
++    # 情绪识别结果作为 emotion_tags 挂在助手消息上
++    assert msgs[1].emotion_tags == ["anxious"]
++    assert msgs[1].tool_cards and msgs[1].tool_cards[0]["type"] == "sources"
++
++
++def test_chat_reuses_existing_session(client, seed_user, patch_ai, db):
++    token = _login(client)
++    first = client.post("/api/v1/chat", json={"content": "第一轮"}, headers=_headers(token))
++    session_id = db.query(ChatSession).one().id
++    second = client.post(
++        "/api/v1/chat", json={"session_id": session_id, "content": "第二轮"}, headers=_headers(token)
++    )
++    assert second.status_code == 200
++    assert db.query(ChatSession).count() == 1
++    assert db.query(Message).count() == 4
++
++
++# ---------- 风险筛查 ----------
++
++
++def test_risk_keyword_triggers_template_and_marks_session(client, seed_user, patch_ai, db):
++    token = _login(client)
++    r = client.post("/api/v1/chat", json={"content": "我真的不想活了"}, headers=_headers(token))
++    assert r.status_code == 200
++
++    events = _parse_sse(r.text)
++    text = "".join(e["payload"]["content"] for e in events if e["type"] == "text")
++    assert "400-161-9995" in text
++    crisis = [e for e in events if e["type"] == "tool_card"]
++    assert crisis and crisis[0]["payload"]["type"] == "crisis"
++
++    session = db.query(ChatSession).one()
++    assert session.risk_level == "high"
++    msgs = db.query(Message).order_by(Message.id).all()
++    assert [m.role for m in msgs] == ["user", "assistant"]
++    assert "400-161-9995" in msgs[-1].content
++
++
++def test_risk_via_llm_judgement(client, seed_user, db, monkeypatch):
++    token = _login(client)
++    monkeypatch.setattr(llm_mod, "stream_chat", fake_stream_chat)
++    monkeypatch.setattr(rag_search_mod, "search", fake_search)
++
++    def risky_json(system, user, **kw):
++        return {
++            "category": "sad",
++            "intensity": 9,
++            "stress_source": "学业",
++            "support_need": "紧急支持",
++            "is_risk": True,
++            "risk_reason": "表达了轻生念头",
++        }
++
++    monkeypatch.setattr(llm_mod, "complete_json", risky_json)
++    r = client.post("/api/v1/chat", json={"content": "最近很崩溃"}, headers=_headers(token))
++    assert r.status_code == 200
++    session = db.query(ChatSession).one()
++    assert session.risk_level == "high"
++    # LLM 判定命中 → 同样走风险模板,而非 LLM 流式回复
++    msgs = db.query(Message).order_by(Message.id).all()
++    assert "400-161-9995" in msgs[-1].content
++
++
++# ---------- 日记闭环 ----------
++
++
++def test_end_session_generates_journal_with_linked_emotion(client, seed_user, patch_ai, db):
++    token = _login(client)
++    r = client.post(
++        "/api/v1/chat", json={"content": "聊聊考试", "end_session": True}, headers=_headers(token)
++    )
++    assert r.status_code == 200
++
++    events = _parse_sse(r.text)
++    j_evt = next(e for e in events if e["type"] == "journal")
++    assert j_evt["payload"]["summary"] == "聊了考试焦虑与应对方法"
++    assert j_evt["payload"]["mood_score"] == 5
++    assert j_evt["payload"]["emotion"]["category"] == "anxious"
++
++    journal = db.query(Journal).one()
++    emotion = db.query(Emotion).one()
++    assert journal.user_id == seed_user.id
++    assert journal.session_id == j_evt["payload"]["journal_id"] == journal.id
++    # Journal ↔ Emotion 关联
++    assert emotion.journal_id == journal.id
++    assert emotion.category == "anxious"
++    assert emotion.intensity == 6
++    assert emotion.user_id == seed_user.id
++
++    session = db.query(ChatSession).one()
++    assert session.status == "closed"
++    assert session.summary == journal.summary  # 摘要回写会话
++
++
++def test_risk_end_session_still_writes_journal(client, seed_user, patch_ai, db):
++    token = _login(client)
++    r = client.post(
++        "/api/v1/chat",
++        json={"content": "我不想活了", "end_session": True},
++        headers=_headers(token),
++    )
++    assert r.status_code == 200
++    events = _parse_sse(r.text)
++    assert any(e["type"] == "journal" for e in events)
++    assert db.query(Journal).count() == 1
++    assert db.query(Emotion).count() == 1
++    session = db.query(ChatSession).one()
++    assert session.status == "closed"
++    assert session.risk_level == "high"
++
++
++# ---------- SSE 事件格式(ruling) ----------
++
++
++def test_sse_event_format(client, seed_user, patch_ai):
++    token = _login(client)
++    r = client.post("/api/v1/chat", json={"content": "你好"}, headers=_headers(token))
++    lines = r.text.splitlines()
++    # 每事件一行 data: {json},后跟一个空行
++    assert lines[0].startswith("data: ")
++    assert lines[1] == ""
++    assert all(line.startswith("data: ") or line == "" for line in lines)
++    for line in lines:
++        if line.startswith("data: "):
++            evt = json.loads(line[len("data: "):])
++            assert set(evt.keys()) == {"type", "payload"}
++
++
++# ---------- 会话权限 ----------
++
++
++def test_chat_requires_auth(client, seed_user, patch_ai):
++    assert client.post("/api/v1/chat", json={"content": "你好"}).status_code == 401
++
++
++def test_chat_rejects_foreign_session(client, seed_user, patch_ai, db):
++    token = _login(client)
++    other = User(role="student", username="stu2", name="他人", password_hash="x")
++    db.add(other)
++    db.commit()
++    s = ChatSession(user_id=other.id)
++    db.add(s)
++    db.commit()
++    r = client.post(
++        "/api/v1/chat", json={"session_id": s.id, "content": "你好"}, headers=_headers(token)
++    )
++    assert r.status_code == 403
++
++
++def test_chat_unknown_session_404(client, seed_user, patch_ai):
++    token = _login(client)
++    r = client.post("/api/v1/chat", json={"session_id": 99999, "content": "你好"}, headers=_headers(token))
++    assert r.status_code == 404
++
++
++# ---------- 记忆管理 ----------
++
++
++def test_assemble_context_sections(client, seed_user, patch_ai, db):
++    from app.ai import memory
++
++    s = ChatSession(user_id=seed_user.id, summary="此前聊过失眠")
++    msgs = [Message(session_id=0, role="user", content="最近睡得不好")]
++    ctx = memory.assemble_context(
++        s,
++        msgs,
++        seed_user.id,
++        db,
++        rag_hits=[ChunkHit(text="正念呼吸可助眠。", doc_title="睡眠指南")],
++    )
++    assert "此前聊过失眠" in ctx          # 会话摘要
++    assert "最近睡得不好" in ctx          # 短期窗口
++    assert "【知识参考】" in ctx          # RAG
++    assert "睡眠指南" in ctx
++
++
++def test_memory_update_extracts_facts_and_compresses_summary(client, seed_user, patch_ai, db):
++    from app.ai import memory
++
++    s = ChatSession(user_id=seed_user.id, title="测试", summary="")
++    db.add(s)
++    db.flush()
++    msgs = [
++        Message(session_id=s.id, role="user", content="我叫小明" if i == 20 else f"第{i}轮内容")
++        if i % 2 == 0
++        else Message(session_id=s.id, role="assistant", content=f"回复{i}")
++        for i in range(21)
++    ]
++    db.add_all(msgs)
++    db.commit()
++
++    memory.update(s, msgs, seed_user.id, db)
++    db.commit()
++
++    facts = db.query(UserMemory).filter_by(user_id=seed_user.id).all()
++    assert any("我叫小明" in f.content for f in facts)
++    db.refresh(s)
++    assert s.summary == "测试摘要"  # 超过阈值 → LLM 摘要压缩(假 complete_text)
