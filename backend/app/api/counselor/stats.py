@@ -88,42 +88,6 @@ def emotion_distribution(
     return {"days": days, "total": total - (total == 1 and not rows), "distribution": distribution}
 
 
-@router.get("/stats/emotion-trend")
-def emotion_trend(
-    days: int = 30,
-    student_id: int | None = None,
-    user: User = Depends(require_roles("counselor", "admin")),
-    db: Session = Depends(get_db),
-) -> dict:
-    """情绪强度时间趋势(折线):按天聚合 平均强度 / 记录数 / 主情绪。"""
-    cutoff = _cutoff(days)
-    q = db.query(Emotion).filter(Emotion.created_at >= cutoff)
-    if student_id:
-        q = q.filter(Emotion.user_id == student_id)
-    emotions = q.order_by(Emotion.created_at).all()
-
-    by_day: dict[str, list[Emotion]] = {}
-    for e in emotions:
-        key = e.created_at.date().isoformat()
-        by_day.setdefault(key, []).append(e)
-
-    points = []
-    for day, items in sorted(by_day.items()):
-        cats = {}
-        for e in items:
-            cats[e.category] = cats.get(e.category, 0) + 1
-        top = max(cats.items(), key=lambda kv: kv[1])[0]
-        points.append(
-            {
-                "date": day,
-                "avg_intensity": round(mean(e.intensity for e in items), 1),
-                "count": len(items),
-                "top_category": top,
-            }
-        )
-    return {"days": days, "student_id": student_id, "points": points}
-
-
 @router.get("/stats/students")
 def students(
     keyword: str | None = None,

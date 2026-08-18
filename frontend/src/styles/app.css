@@ -130,6 +130,122 @@
   font-weight: 700;
 }
 
+.emergency-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.15s ease;
+}
+
+.emergency-modal {
+  position: relative;
+  width: min(420px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 32px 28px 24px;
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  text-align: center;
+  animation: slideUp 0.2s ease;
+}
+
+.emergency-modal__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.emergency-modal__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: var(--danger-pale);
+  color: var(--danger);
+}
+
+.emergency-modal h2 {
+  margin: 0 0 8px;
+  font-size: 1.25rem;
+  color: var(--danger);
+}
+
+.emergency-modal__desc {
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.emergency-modal__cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+}
+
+.emergency-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s;
+}
+
+.emergency-card:hover {
+  border-color: var(--danger);
+}
+
+.emergency-card--primary {
+  border-color: var(--danger);
+  background: var(--danger-pale);
+}
+
+.emergency-card strong {
+  display: block;
+  font-size: 0.88rem;
+  margin-bottom: 2px;
+}
+
+.emergency-card span {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.emergency-card svg {
+  flex-shrink: 0;
+  color: var(--danger);
+}
+
+.emergency-modal__footer {
+  margin: 18px 0 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .icon-button {
   display: grid;
   width: 38px;
@@ -2463,6 +2579,19 @@ a.tool-card__breathing-cta {
   color: var(--muted);
   font-size: 0.72rem;
   font-weight: 500;
+}
+
+.counselor-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.ghost-button--active {
+  border-color: rgba(111, 143, 124, 0.45);
+  background: rgba(230, 238, 231, 0.85);
+  color: var(--sage-dark);
 }
 
 .student-picker {

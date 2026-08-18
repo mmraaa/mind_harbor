@@ -1,7 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Search } from 'lucide-react'
 import { streamCounselorChat } from '../../api/counselorChat'
 import { getErrorMessage } from '../../api/client'
+import {
+  fetchOverview,
+  fetchSessions,
+  fetchStudentDetail,
+  fetchStudents,
+  type SessionQA,
+  type StatsOverview,
+  type StudentDetail,
+  type StudentSummary,
+} from '../../api/counselorStats'
+import { emotionDisplay } from '../../data/emotions'
 import { CounselorToolCards, CounselorToolsHint } from '../../components/CounselorToolCards'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
 import { useCounselorAgentStore } from '../../stores/counselorAgent'
@@ -207,31 +218,48 @@ export function SqlAgentPage() {
   )
 }
 
-const SESSIONS = [
-  {
-    student: '阿舟',
-    title: '高风险倾诉',
-    risk: 'high',
-    summary: '已触发风险模板与热线提示，待质检确认。',
-    time: '今天 09:20',
-  },
-  {
-    student: '小禾',
-    title: '持续焦虑与失眠',
-    risk: 'medium',
-    summary: '多次触发呼吸练习；建议关注睡眠与学业负荷。',
-    time: '昨天',
-  },
-  {
-    student: '阿南',
-    title: '小组作业压力',
-    risk: 'low',
-    summary: '情绪日记已生成，整体可观察。',
-    time: '昨天',
-  },
-]
+function formatShort(iso: string | null) {
+  if (!iso) return ''
+  try {
+    return new Date(iso).toLocaleString('zh-CN', {
+      month: 'numeric',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
+}
 
 export function SessionsPage() {
+  const [overview, setOverview] = useState<StatsOverview | null>(null)
+  const [sessions, setSessions] = useState<SessionQA[]>([])
+  const [riskFilter, setRiskFilter] = useState<'all' | 'high'>('all')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const [ov, sess] = await Promise.all([
+        fetchOverview(30),
+        fetchSessions({ risk: riskFilter, days: 30 }),
+      ])
+      setOverview(ov)
+      setSessions(sess.sessions)
+    } catch (err) {
+      setError(getErrorMessage(err, '无法加载会话数据'))
+    } finally {
+      setLoading(false)
+    }
+  }, [riskFilter])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
   return (
     <div>
       <header className="page-header">
@@ -244,117 +272,155 @@ export function SessionsPage() {
 
       <div className="stats-strip">
         <div className="stat-card">
-          <div className="label">今日待质检</div>
-          <div className="value">3</div>
+          <div className="label">总会话</div>
+          <div className="value">{overview?.sessions ?? '—'}</div>
+        </div>
+        <div className="stat-card">
+          <div className="label">进行中</div>
+          <div className="value">{overview?.active_sessions ?? '—'}</div>
         </div>
         <div className="stat-card">
           <div className="label">高风险</div>
-          <div className="value">1</div>
-        </div>
-        <div className="stat-card">
-          <div className="label">已复核</div>
-          <div className="value">12</div>
+          <div className="value">{overview?.high_risk_sessions ?? '—'}</div>
         </div>
       </div>
 
-      <div className="list-panel">
-        {SESSIONS.map((s) => (
-          <article key={`${s.student}-${s.title}`} className="list-row">
-            <div>
-              <h3>
-                {s.student} · {s.title}
-              </h3>
-              <p>{s.summary}</p>
-              <span
-                className={`chip${s.risk === 'high' ? ' chip--risk' : ''}`}
-                style={{ marginTop: 8 }}
-              >
-                risk · {s.risk}
-              </span>
-            </div>
-            <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-              <span className="time">{s.time}</span>
-              <button type="button" className="ghost-button">
-                回放
-              </button>
-            </div>
-          </article>
-        ))}
+      <div className="counselor-filter-row">
+        <button
+          type="button"
+          className={`ghost-button${riskFilter === 'all' ? ' ghost-button--active' : ''}`}
+          onClick={() => setRiskFilter('all')}
+        >
+          全部
+        </button>
+        <button
+          type="button"
+          className={`ghost-button${riskFilter === 'high' ? ' ghost-button--active' : ''}`}
+          onClick={() => setRiskFilter('high')}
+        >
+          仅高风险
+        </button>
       </div>
+
+      {error && <p className="archive-alert">{error}</p>}
+
+      {loading ? (
+        <p className="archive-loading">正在载入会话…</p>
+      ) : sessions.length === 0 ? (
+        <p className="archive-empty__text">暂无会话记录。</p>
+      ) : (
+        <div className="list-panel">
+          {sessions.map((s) => (
+            <article key={s.id} className="list-row">
+              <div>
+                <h3>
+                  {s.student_name} · {s.title}
+                </h3>
+                <p>
+                  {s.status === 'active' ? '进行中' : '已结束'} · {s.message_count} 条消息
+                </p>
+                <span
+                  className={`chip${s.risk_level === 'high' ? ' chip--risk' : ''}`}
+                  style={{ marginTop: 8 }}
+                >
+                  risk · {s.risk_level}
+                </span>
+              </div>
+              <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+                <span className="time">{formatShort(s.started_at)}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
-type ManagedStudent = {
-  id: string
-  name: string
-  studentNo: string
-  risk: 'low' | 'medium' | 'high'
-  primaryEmotion: string
-  avgIntensity: number
+function riskLabel(sessions: number): 'high' | 'low' {
+  return sessions > 0 ? 'high' : 'low'
 }
-
-const MANAGED_STUDENTS: ManagedStudent[] = [
-  {
-    id: 's1',
-    name: '阿南',
-    studentNo: '20240101',
-    risk: 'low',
-    primaryEmotion: 'anxious',
-    avgIntensity: 5.2,
-  },
-  {
-    id: 's2',
-    name: '小禾',
-    studentNo: '20240118',
-    risk: 'medium',
-    primaryEmotion: 'tired',
-    avgIntensity: 6.1,
-  },
-  {
-    id: 's3',
-    name: '阿舟',
-    studentNo: '20240202',
-    risk: 'high',
-    primaryEmotion: 'anxious',
-    avgIntensity: 7.4,
-  },
-  {
-    id: 's4',
-    name: '林夏',
-    studentNo: '20240311',
-    risk: 'low',
-    primaryEmotion: 'calm',
-    avgIntensity: 3.8,
-  },
-  {
-    id: 's5',
-    name: '周予',
-    studentNo: '20240328',
-    risk: 'medium',
-    primaryEmotion: 'lonely',
-    avgIntensity: 5.6,
-  },
-]
-
-const BARS = [42, 58, 36, 70, 48, 62, 55]
 
 export function StudentArchivePage() {
   const [query, setQuery] = useState('')
-  const [activeId, setActiveId] = useState(MANAGED_STUDENTS[0].id)
+  const [riskFilter, setRiskFilter] = useState<'all' | 'high'>('all')
+  const [students, setStudents] = useState<StudentSummary[]>([])
+  const [activeId, setActiveId] = useState<number | null>(null)
+  const [detail, setDetail] = useState<StudentDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [error, setError] = useState('')
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return MANAGED_STUDENTS
-    return MANAGED_STUDENTS.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.studentNo.includes(q) ||
-        s.primaryEmotion.toLowerCase().includes(q),
-    )
-  }, [query])
+  const loadStudents = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const data = await fetchStudents({
+        keyword: query.trim() || undefined,
+        risk: riskFilter,
+        days: 30,
+      })
+      setStudents(data.students)
+      if (data.students.length > 0) {
+        setActiveId((prev) => {
+          if (prev != null && data.students.some((s) => s.id === prev)) return prev
+          return data.students[0].id
+        })
+      } else {
+        setActiveId(null)
+        setDetail(null)
+      }
+    } catch (err) {
+      setError(getErrorMessage(err, '无法加载学生列表'))
+    } finally {
+      setLoading(false)
+    }
+  }, [query, riskFilter])
 
-  const active = MANAGED_STUDENTS.find((s) => s.id === activeId) ?? MANAGED_STUDENTS[0]
+  useEffect(() => {
+    const timer = setTimeout(() => void loadStudents(), query ? 300 : 0)
+    return () => clearTimeout(timer)
+  }, [loadStudents, query])
+
+  useEffect(() => {
+    if (activeId == null) return
+    let alive = true
+    setDetailLoading(true)
+    ;(async () => {
+      try {
+        const d = await fetchStudentDetail(activeId, 30)
+        if (alive) setDetail(d)
+      } catch (err) {
+        if (alive) setError(getErrorMessage(err, '无法加载学生详情'))
+      } finally {
+        if (alive) setDetailLoading(false)
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [activeId])
+
+  const activeSummary = useMemo(
+    () => students.find((s) => s.id === activeId) ?? null,
+    [students, activeId],
+  )
+
+  const trendBars = useMemo(() => {
+    if (!detail) return []
+    const byDay: Record<string, number[]> = {}
+    for (const e of detail.emotion_series) {
+      const day = e.created_at?.slice(0, 10) ?? '?'
+      ;(byDay[day] ??= []).push(e.intensity)
+    }
+    const sorted = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).slice(-7)
+    const maxAvg = Math.max(...sorted.map(([, vals]) => vals.reduce((a, b) => a + b, 0) / vals.length), 1)
+    return sorted.map(([day, vals]) => ({
+      day,
+      avg: Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 10) / 10,
+      pct: Math.round((vals.reduce((a, b) => a + b, 0) / vals.length / maxAvg) * 100),
+    }))
+  }, [detail])
 
   return (
     <div>
@@ -363,114 +429,157 @@ export function StudentArchivePage() {
           <p className="page-header__eyebrow">ARCHIVE</p>
           <h1>学生心理档案</h1>
           <p className="page-header__description">
-            搜索你负责的学生，查看其情绪日记（LLM 生成）与情绪趋势。学生端不可查看这些内容。
+            搜索学生，查看其情绪日记（LLM 生成）与情绪趋势。学生端不可查看这些内容。
           </p>
         </div>
       </header>
 
       <div className="archive-search">
         <label className="field-label" htmlFor="student-search">
-          搜索负责学生
+          搜索学生
         </label>
         <div className="archive-search__row">
           <Search size={18} aria-hidden />
           <input
             id="student-search"
             className="text-input"
-            placeholder="输入姓名、学号或主情绪…"
+            placeholder="输入姓名或用户名…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="archive-search__results" role="listbox" aria-label="负责学生列表">
-          {filtered.length === 0 ? (
-            <p className="archive-search__empty">没有匹配的负责学生，试试其他关键词。</p>
+        <div className="counselor-filter-row">
+          <button
+            type="button"
+            className={`ghost-button${riskFilter === 'all' ? ' ghost-button--active' : ''}`}
+            onClick={() => setRiskFilter('all')}
+          >
+            全部
+          </button>
+          <button
+            type="button"
+            className={`ghost-button${riskFilter === 'high' ? ' ghost-button--active' : ''}`}
+            onClick={() => setRiskFilter('high')}
+          >
+            需关注
+          </button>
+        </div>
+        {error && <p className="archive-alert">{error}</p>}
+        <div className="archive-search__results" role="listbox" aria-label="学生列表">
+          {loading ? (
+            <p className="archive-loading">正在载入学生…</p>
+          ) : students.length === 0 ? (
+            <p className="archive-search__empty">没有匹配的学生。</p>
           ) : (
-            filtered.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                role="option"
-                aria-selected={s.id === active.id}
-                className={`archive-student${s.id === active.id ? ' archive-student--active' : ''}`}
-                onClick={() => setActiveId(s.id)}
-              >
-                <span className="archive-student__name">
-                  {s.name}
-                  <small>{s.studentNo}</small>
-                </span>
-                <span className={`chip${s.risk === 'high' ? ' chip--risk' : ''}`}>
-                  {s.risk}
-                </span>
-              </button>
-            ))
+            students.map((s) => {
+              const emo = emotionDisplay(s.latest_emotion)
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="option"
+                  aria-selected={s.id === activeId}
+                  className={`archive-student${s.id === activeId ? ' archive-student--active' : ''}`}
+                  onClick={() => setActiveId(s.id)}
+                >
+                  <span className="archive-student__name">
+                    {s.name}
+                    <small>{s.username}</small>
+                  </span>
+                  <span className={`chip${riskLabel(s.high_risk_sessions) === 'high' ? ' chip--risk' : ''}`}>
+                    {emo.emoji} {emo.label}
+                    {s.avg_intensity != null ? ` · ${s.avg_intensity}` : ''}
+                  </span>
+                </button>
+              )
+            })
           )}
         </div>
       </div>
 
-      <div className="counselor-grid">
-        <section>
-          <div className="trend-panel">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <strong>
-                {active.name} · 近 7 日情绪强度
-              </strong>
-              <span className="chip chip--clay">
-                {active.primaryEmotion} · 均强 {active.avgIntensity}
-              </span>
-            </div>
-            <div className="trend-bars" aria-hidden>
-              {BARS.map((h, i) => (
-                <div key={i} className="trend-bar" style={{ height: `${h}%` }} />
-              ))}
-            </div>
-          </div>
-
-          <div className="list-panel">
-            {[
-              {
-                title: '日记 · 小组作业与失眠',
-                excerpt: '压力来自学业堆叠；需要放松与可执行下一步。mood 5/10',
-                time: '今天',
-              },
-              {
-                title: '日记 · 想家',
-                excerpt: '孤独感上升；推荐同伴支持资源后情绪略回落。',
-                time: '周三',
-              },
-            ].map((j) => (
-              <article key={j.title} className="list-row">
-                <div>
-                  <h3>{j.title}</h3>
-                  <p>{j.excerpt}</p>
+      {activeSummary && (
+        <div className="counselor-grid">
+          <section>
+            {detailLoading ? (
+              <p className="archive-loading">正在载入详情…</p>
+            ) : detail ? (
+              <>
+                <div className="trend-panel">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                    <strong>{activeSummary.name} · 近期情绪强度</strong>
+                    <span className="chip chip--clay">
+                      {emotionDisplay(activeSummary.latest_emotion).emoji}{' '}
+                      {emotionDisplay(activeSummary.latest_emotion).label}
+                      {activeSummary.avg_intensity != null ? ` · 均强 ${activeSummary.avg_intensity}` : ''}
+                    </span>
+                  </div>
+                  {trendBars.length > 0 ? (
+                    <div className="trend-bars" aria-hidden>
+                      {trendBars.map((b) => (
+                        <div key={b.day} className="trend-bar" style={{ height: `${b.pct}%` }} title={`${b.day}: ${b.avg}`} />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="archive-empty__text">暂无情绪数据。</p>
+                  )}
                 </div>
-                <span className="time">{j.time}</span>
-              </article>
-            ))}
-          </div>
-        </section>
 
-        <aside className="card-item">
-          <h3>{active.name} · 情绪快照</h3>
-          <p>
-            主情绪 {active.primaryEmotion} · 平均强度 {active.avgIntensity}
-          </p>
-          <p>压力来源：学业 / 睡眠</p>
-          <p>支持需求：放松、结构化建议</p>
-          <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '8px 0' }} />
-          <h3>近期风险</h3>
-          <p>
-            {active.risk === 'high'
-              ? '存在 high 风险会话，建议优先质检。'
-              : active.risk === 'medium'
-                ? '近期有中风险标记，可持续观察。'
-                : '近期无高风险标记。'}
-          </p>
-          <button type="button" className="ghost-button" style={{ marginTop: 8 }}>
-            在 SQL 助手中继续分析
-          </button>
-        </aside>
-      </div>
+                {detail.journals.length > 0 && (
+                  <div className="list-panel">
+                    <h3 style={{ marginBottom: 8 }}>情绪日记</h3>
+                    {detail.journals.map((j) => (
+                      <article key={j.id} className="list-row">
+                        <div>
+                          <h3>{j.summary}</h3>
+                          <p>mood {j.mood_score ?? '—'}/10</p>
+                        </div>
+                        <span className="time">{formatShort(j.created_at)}</span>
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                {detail.sessions.length > 0 && (
+                  <div className="list-panel">
+                    <h3 style={{ marginBottom: 8 }}>近期会话</h3>
+                    {detail.sessions.map((s) => (
+                      <article key={s.id} className="list-row">
+                        <div>
+                          <h3>{s.title}</h3>
+                          <span className={`chip${s.risk_level === 'high' ? ' chip--risk' : ''}`}>
+                            risk · {s.risk_level}
+                          </span>
+                        </div>
+                        <span className="time">{formatShort(s.started_at)}</span>
+                      </article>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </section>
+
+          <aside className="card-item">
+            <h3>{activeSummary.name} · 情绪快照</h3>
+            <p>
+              {emotionDisplay(activeSummary.latest_emotion).emoji}{' '}
+              最近情绪 {emotionDisplay(activeSummary.latest_emotion).label}
+              {activeSummary.latest_intensity != null ? ` · 强度 ${activeSummary.latest_intensity}` : ''}
+            </p>
+            <p>
+              近 30 天情绪记录 {activeSummary.emotion_count} 条
+              {activeSummary.avg_intensity != null ? ` · 均强 ${activeSummary.avg_intensity}` : ''}
+            </p>
+            <hr style={{ border: 0, borderTop: '1px solid var(--line)', margin: '8px 0' }} />
+            <h3>近期风险</h3>
+            <p>
+              {activeSummary.high_risk_sessions > 0
+                ? `存在 ${activeSummary.high_risk_sessions} 个高风险会话，建议优先质检。`
+                : '近期无高风险会话。'}
+            </p>
+          </aside>
+        </div>
+      )}
     </div>
   )
 }

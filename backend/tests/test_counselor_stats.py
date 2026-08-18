@@ -59,13 +59,10 @@ def test_emotion_distribution(client, db, seed_counselor, seed_user):
     assert len(d["distribution"]) == 7  # 固定枚举补齐
 
 
-def test_emotion_trend_and_students(client, db, seed_counselor, seed_user):
+def test_students_and_detail(client, db, seed_counselor, seed_user):
     u = _seed_student_data(db)
     token = _login(client)
     h = {"Authorization": f"Bearer {token}"}
-
-    trend = client.get("/api/v1/counselor/stats/emotion-trend?days=30", headers=h).json()
-    assert trend["points"] and trend["points"][0]["avg_intensity"] >= 1
 
     students = client.get("/api/v1/counselor/stats/students?risk=high", headers=h).json()
     assert any(s["name"] == "同学甲" for s in students["students"])
