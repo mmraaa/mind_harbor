@@ -1,5 +1,5 @@
-import { Anchor, MessageCircle } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Anchor, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   listMessages,
@@ -16,6 +16,25 @@ import { useChatStore } from '../../stores/chat'
 const TAB_LABELS: Record<SessionStatusFilter, string> = {
   active: '进行中',
   closed: '已结束',
+}
+
+function pageWindow(current: number, totalPages: number): (number | '…')[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1)
+  }
+  const pages = new Set<number>([1, totalPages, current])
+  for (let d = 1; d <= 2; d += 1) {
+    pages.add(current - d)
+    pages.add(current + d)
+  }
+  const sorted = [...pages].filter((n) => n >= 1 && n <= totalPages).sort((a, b) => a - b)
+  const out: (number | '…')[] = []
+  for (const n of sorted) {
+    const prev = out[out.length - 1]
+    if (typeof prev === 'number' && n - prev > 1) out.push('…')
+    out.push(n)
+  }
+  return out
 }
 
 function formatTime(iso: string) {
@@ -149,7 +168,6 @@ export default function HistoryPage() {
   const [items, setItems] = useState<ChatSession[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(false)
   const [tabTotals, setTabTotals] = useState<Record<SessionStatusFilter, number | null>>({
     active: null,
     closed: null,
@@ -159,37 +177,34 @@ export default function HistoryPage() {
   const [activeId, setActiveId] = useState<number | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
+  const [pageLoading, setPageLoading] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [replaying, setReplaying] = useState(false)
   const [error, setError] = useState('')
+  const [jumpDraft, setJumpDraft] = useState('1')
 
   const activeSession = useMemo(
     () => items.find((s) => s.id === activeId) ?? null,
     [items, activeId],
   )
 
-  const fetchPage = useCallback(
-    async (status: SessionStatusFilter, pageNum: number, append: boolean) => {
-      const data = await listSessionsPage(status, pageNum, SESSION_PAGE_SIZE)
-      setItems((prev) => (append ? [...prev, ...data.items] : data.items))
-      setTotal(data.total)
-      setPage(data.page)
-      setHasMore(data.has_more)
-      setTabTotals((prev) => ({ ...prev, [status]: data.total }))
-      if (!append && data.items.length > 0) {
-        setActiveId((current) => {
-          if (current != null && data.items.some((s) => s.id === current)) return current
-          return data.items[0].id
-        })
-      } else if (!append && data.items.length === 0) {
-        setActiveId(null)
-        setMessages([])
-      }
-      return data
-    },
-    [],
-  )
+  const totalPages = Math.max(1, Math.ceil(total / SESSION_PAGE_SIZE))
+
+  const fetchPage = useCallback(async (status: SessionStatusFilter, pageNum: number) => {
+    const data = await listSessionsPage(status, pageNum, SESSION_PAGE_SIZE)
+    setItems(data.items)
+    setTotal(data.total)
+    setPage(data.page)
+    setJumpDraft(String(data.page))
+    setTabTotals((prev) => ({ ...prev, [status]: data.total }))
+    if (data.items.length > 0) {
+      setActiveId(data.items[0].id)
+    } else {
+      setActiveId(null)
+      setMessages([])
+    }
+    return data
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -219,7 +234,7 @@ export default function HistoryPage() {
     setError('')
     ;(async () => {
       try {
-        await fetchPage(tab, 1, false)
+        await fetchPage(tab, 1)
       } catch (err) {
         if (alive) setError(getErrorMessage(err, '无法加载会话列表'))
       } finally {
@@ -250,17 +265,28 @@ export default function HistoryPage() {
     }
   }, [activeId])
 
-  async function loadMore() {
-    if (!hasMore || loadingMore) return
-    setLoadingMore(true)
+  async function goToPage(next: number) {
+    const clamped = Math.min(Math.max(1, next), totalPages)
+    if (clamped === page && items.length > 0) return
+    setPageLoading(true)
     setError('')
     try {
-      await fetchPage(tab, page + 1, true)
+      await fetchPage(tab, clamped)
     } catch (err) {
-      setError(getErrorMessage(err, '无法加载更多会话'))
+      setError(getErrorMessage(err, '无法加载该页会话'))
     } finally {
-      setLoadingMore(false)
+      setPageLoading(false)
     }
+  }
+
+  function submitJump(e: FormEvent) {
+    e.preventDefault()
+    const n = Number.parseInt(jumpDraft, 10)
+    if (!Number.isFinite(n)) {
+      setJumpDraft(String(page))
+      return
+    }
+    void goToPage(n)
   }
 
   async function openInChat(sessionId: number) {
@@ -305,8 +331,8 @@ export default function HistoryPage() {
           </Link>
         </div>
       ) : (
-        <div className="archive-grid">
-          <div className="tide-index">
+        <div className="archive-grid archive-grid--history">
+          <div className="tide-index-head">
             <div className="tide-session-tabs" role="tablist" aria-label="会话状态">
               {(['active', 'closed'] as const).map((key) => (
                 <button
@@ -327,48 +353,96 @@ export default function HistoryPage() {
               ))}
             </div>
 
-            <section className="tide-session-group">
-              <h2 className="tide-session-group__title">
-                {TAB_LABELS[tab]}
-                <span className="tide-session-group__count">{total}</span>
-              </h2>
+            <h2 className="tide-session-group__title">
+              {TAB_LABELS[tab]}
+              <span className="tide-session-group__count">{total}</span>
+            </h2>
+          </div>
 
-              {loading && items.length === 0 ? (
-                <p className="archive-loading">正在载入…</p>
-              ) : items.length === 0 ? (
-                <p className="archive-empty__text">
-                  {tab === 'active' ? '暂无进行中的对话。' : '暂无已结束的对话。'}
-                </p>
-              ) : (
-                <>
-                  <ul className="tide-session-list">
-                    {items.map((s) => (
-                      <SessionRow
-                        key={s.id}
-                        session={s}
-                        active={activeId === s.id}
-                        isCurrent={currentSessionId === s.id}
-                        onSelect={setActiveId}
-                      />
-                    ))}
-                  </ul>
-                  {hasMore ? (
-                    <button
-                      type="button"
-                      className="ghost-button tide-session-more"
-                      disabled={loadingMore}
-                      onClick={() => void loadMore()}
-                    >
-                      {loadingMore ? '加载中…' : `加载更多（${items.length}/${total}）`}
-                    </button>
-                  ) : items.length > 0 && total > items.length ? (
-                    <p className="tide-session-more tide-session-more--done">
-                      已显示全部 {total} 条
+          <div className="tide-index-body">
+            {loading && items.length === 0 ? (
+              <p className="archive-loading">正在载入…</p>
+            ) : items.length === 0 ? (
+              <p className="archive-empty__text">
+                {tab === 'active' ? '暂无进行中的对话。' : '暂无已结束的对话。'}
+              </p>
+            ) : (
+              <>
+                <ul className={`tide-session-list${pageLoading ? ' tide-session-list--busy' : ''}`}>
+                  {items.map((s) => (
+                    <SessionRow
+                      key={s.id}
+                      session={s}
+                      active={activeId === s.id}
+                      isCurrent={currentSessionId === s.id}
+                      onSelect={setActiveId}
+                    />
+                  ))}
+                </ul>
+                {total > 0 ? (
+                  <nav className="tide-pager" aria-label="会话分页">
+                    <p className="tide-pager__range">
+                      {`${(page - 1) * SESSION_PAGE_SIZE + 1}–${Math.min(page * SESSION_PAGE_SIZE, total)} / ${total}`}
                     </p>
-                  ) : null}
-                </>
-              )}
-            </section>
+                    <div className="tide-pager__pages">
+                      <button
+                        type="button"
+                        className="tide-pager__nav"
+                        disabled={page <= 1 || pageLoading}
+                        aria-label="上一页"
+                        onClick={() => void goToPage(page - 1)}
+                      >
+                        <ChevronLeft size={16} aria-hidden />
+                      </button>
+                      {pageWindow(page, totalPages).map((item, idx) =>
+                        item === '…' ? (
+                          <span key={`e-${idx}`} className="tide-pager__ellipsis">
+                            …
+                          </span>
+                        ) : (
+                          <button
+                            key={item}
+                            type="button"
+                            className={`tide-pager__page${item === page ? ' tide-pager__page--current' : ''}`}
+                            aria-current={item === page ? 'page' : undefined}
+                            disabled={pageLoading}
+                            onClick={() => void goToPage(item)}
+                          >
+                            {item}
+                          </button>
+                        ),
+                      )}
+                      <button
+                        type="button"
+                        className="tide-pager__nav"
+                        disabled={page >= totalPages || pageLoading}
+                        aria-label="下一页"
+                        onClick={() => void goToPage(page + 1)}
+                      >
+                        <ChevronRight size={16} aria-hidden />
+                      </button>
+                    </div>
+                    <form className="tide-pager__jump" onSubmit={submitJump}>
+                      <label htmlFor="session-page-jump">跳转</label>
+                      <input
+                        id="session-page-jump"
+                        className="tide-pager__input"
+                        type="number"
+                        min={1}
+                        max={totalPages}
+                        value={jumpDraft}
+                        disabled={pageLoading}
+                        onChange={(e) => setJumpDraft(e.target.value)}
+                      />
+                      <span className="tide-pager__of">/ {totalPages}</span>
+                      <button type="submit" className="ghost-button tide-pager__go" disabled={pageLoading}>
+                        前往
+                      </button>
+                    </form>
+                  </nav>
+                ) : null}
+              </>
+            )}
           </div>
 
           <PortholePreview

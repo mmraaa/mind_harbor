@@ -19,7 +19,7 @@ export type SessionListPage = {
   has_more: boolean
 }
 
-export const SESSION_PAGE_SIZE = 20
+export const SESSION_PAGE_SIZE = 8
 
 export type SessionStatusFilter = SessionListPage['status']
 

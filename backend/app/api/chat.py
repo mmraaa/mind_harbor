@@ -44,7 +44,7 @@ def _session_item(s: ChatSession) -> dict:
 def list_sessions(
     status: str = Query(..., pattern="^(active|closed)$"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=50),
+    page_size: int = Query(8, ge=1, le=50),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:

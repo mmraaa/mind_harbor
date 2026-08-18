@@ -76,21 +76,25 @@ def test_sessions_list_paginated_by_status_and_only_own(client, seed_user, db):
 
 
 def test_sessions_list_pagination(client, seed_user, db):
-    for i in range(25):
+    for i in range(17):
         db.add(ChatSession(user_id=seed_user.id, title=f"进行中-{i}"))
     db.commit()
 
     token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
     h = {"Authorization": f"Bearer {token}"}
 
-    p1 = client.get("/api/v1/chat/sessions?status=active&page=1&page_size=20", headers=h).json()
-    assert p1["total"] == 25
-    assert len(p1["items"]) == 20
+    p1 = client.get("/api/v1/chat/sessions?status=active&page=1&page_size=8", headers=h).json()
+    assert p1["total"] == 17
+    assert len(p1["items"]) == 8
     assert p1["has_more"] is True
 
-    p2 = client.get("/api/v1/chat/sessions?status=active&page=2&page_size=20", headers=h).json()
-    assert len(p2["items"]) == 5
-    assert p2["has_more"] is False
+    p2 = client.get("/api/v1/chat/sessions?status=active&page=2&page_size=8", headers=h).json()
+    assert len(p2["items"]) == 8
+    assert p2["has_more"] is True
+
+    p3 = client.get("/api/v1/chat/sessions?status=active&page=3&page_size=8", headers=h).json()
+    assert len(p3["items"]) == 1
+    assert p3["has_more"] is False
 
 
 def test_get_session_meta(client, seed_user, db):
