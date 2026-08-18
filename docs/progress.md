@@ -33,6 +33,16 @@
 
 ## 已完成
 
+### 2026-08-18 · 咨询师学生档案 + 会话回放(分支 feature/frontend-tri-role)
+
+- **完成内容**:学生档案展示基础信息与多日情绪折线图(7/14/30);导航调整为 SQL助手 → 学生档案 → 会话质检;档案近会话跳转质检并高亮居中,支持完整消息回放。
+- **接口**:扩展 `GET /counselor/stats/students/{id}/detail`(role/profile/emotion_trend/session summary);新增 `GET /counselor/stats/sessions/{id}`、`GET /counselor/stats/sessions/{id}/messages`。
+- **涉及文件**:`backend/app/api/counselor/stats.py`、`backend/tests/test_counselor_stats.py`、`frontend/src/pages/counselor/CounselorPages.tsx`、`EmotionTrendChart.tsx` 等。
+- **测试**:`tests/test_counselor_stats.py` 7 passed;全量套件未跑完。
+- **commit**:`084facb`
+- **评审结论**:未评审。
+- **遗留问题**:全量 pytest 中 `test_agent_run_executes_multiple_tools_in_one_round` 曾失败,对话测试易受远程库锁影响。
+
 ### 2026-08-15 · Task 7 学生端前端(分支 feature/m5-student-frontend)
 
 - **设计演进「夜航港湾」→「晨光港湾」**:初版深海夜冷色调,按用户要求反转为**暖色调**(2026-08-15 更新)——暖米 `#F7EFE2` 主底 + 日出橙 `#E8853B` 强调 + 雾蓝 `#5B8EA6` 冷暖对比;灯塔从深夜变日出,叙事一致;新增语义变量 `--on-accent`(强调底文字)、`--coral-text`(危机文字),清理全部硬编码浅色文字(浅底可读)。实测计算样式验证暖色生效、登录闭环正常。
