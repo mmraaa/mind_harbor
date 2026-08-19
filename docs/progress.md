@@ -32,6 +32,16 @@
 (无)
 
 ## 已完成
+### 2026-08-19 · 情绪日记 ↔ 会话关联(从日记跳转到会话)
+
+- **完成内容**:在咨询师档案弹窗中，日记详情新增“查看对应会话”按钮；点击后切换到“近期会话”视图并高亮该会话，自动加载会话消息回放。
+- **接口变更**:`GET /counselor/stats/students/{id}/detail` 返回的 `journals[]` 增加 `session_id` 字段，用于把日记关联到对应会话。
+- **涉及文件/接口**:`backend/app/api/counselor/stats.py`、`frontend/src/api/counselorStats.ts`、`frontend/src/pages/counselor/CounselorPages.tsx`、`frontend/src/styles/app.css`
+- **测试结果**:`pytest -q tests/test_counselor_stats.py -v`：5 passed
+- **构建结果**:`npm run build`：通过
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:当弹窗内存在搜索/筛选条件时，跳转时会重置搜索/筛选以尽量保证目标会话可见。
 
 ### 2026-08-18 · 咨询师档案整合:移除会话质检页(分支 feature/frontend-tri-role)
 

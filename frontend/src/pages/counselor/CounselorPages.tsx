@@ -341,12 +341,16 @@ function ArchiveBrowseModal({
   journals,
   sessions,
   onClose,
+  forcedSessionId,
+  onJumpToSession,
 }: {
   kind: ArchiveBrowseKind
   studentName: string
   journals: StudentJournal[]
   sessions: StudentSessionIndex[]
   onClose: () => void
+  forcedSessionId?: number | null
+  onJumpToSession?: (sessionId: number) => void
 }) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'closed'>('all')
@@ -376,6 +380,13 @@ function ArchiveBrowseModal({
   )
 
   useEffect(() => {
+    // kind 在父组件间切换（例如从日记跳转到会话）时，重置过滤条件，确保目标可见。
+    setSearch('')
+    setStatusFilter('all')
+    setRiskFilter('all')
+  }, [kind])
+
+  useEffect(() => {
     if (kind !== 'journals') return
     if (pickedJournalId != null && filteredJournals.some((j) => j.id === pickedJournalId)) return
     setPickedJournalId(filteredJournals[0]?.id ?? null)
@@ -383,9 +394,13 @@ function ArchiveBrowseModal({
 
   useEffect(() => {
     if (kind !== 'sessions') return
+    if (forcedSessionId != null && filteredSessions.some((s) => s.id === forcedSessionId)) {
+      setPickedSessionId(forcedSessionId)
+      return
+    }
     if (pickedSessionId != null && filteredSessions.some((s) => s.id === pickedSessionId)) return
     setPickedSessionId(filteredSessions[0]?.id ?? null)
-  }, [kind, filteredSessions, pickedSessionId])
+  }, [kind, filteredSessions, pickedSessionId, forcedSessionId])
 
   useEffect(() => {
     if (kind !== 'sessions' || pickedSessionId == null) {
@@ -425,6 +440,8 @@ function ArchiveBrowseModal({
   const pickedJournal = journals.find((j) => j.id === pickedJournalId) ?? null
   const pickedSession = sessions.find((s) => s.id === pickedSessionId) ?? null
   const isJournals = kind === 'journals'
+  const relatedSession =
+    pickedJournal?.session_id != null ? sessions.find((s) => s.id === pickedJournal.session_id) ?? null : null
 
   return (
     <div className="archive-browse" role="dialog" aria-modal="true">
@@ -554,6 +571,7 @@ function ArchiveBrowseModal({
                       {s.status === 'active' ? '进行中' : '已结束'}
                       {` · ${sessionRiskText(s.risk_level)}`}
                       {s.message_count ? ` · ${s.message_count} 条` : ''}
+                          {s.started_at ? ` · ${formatShort(s.started_at)}` : ''}
                     </span>
                   </button>
                 ))
@@ -580,17 +598,28 @@ function ArchiveBrowseModal({
                   {(pickedJournal.stress_source || pickedJournal.support_need) && (
                     <div className="archive-browse__journal-meta">
                       {pickedJournal.stress_source ? (
-                        <p>
+                        <p className="archive-browse__journal-meta__item archive-browse__journal-meta__item--stress">
                           <strong>压力来源</strong>
                           <span>{pickedJournal.stress_source}</span>
                         </p>
                       ) : null}
                       {pickedJournal.support_need ? (
-                        <p>
+                        <p className="archive-browse__journal-meta__item archive-browse__journal-meta__item--support">
                           <strong>支持需求</strong>
                           <span>{pickedJournal.support_need}</span>
                         </p>
                       ) : null}
+                    </div>
+                  )}
+                  {pickedJournal.session_id != null && (
+                    <div className="archive-journal-jump">
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => onJumpToSession?.(pickedJournal.session_id as number)}
+                      >
+                        查看对应会话{relatedSession ? `：${relatedSession.title}` : ''} →
+                      </button>
                     </div>
                   )}
                 </article>
@@ -605,6 +634,7 @@ function ArchiveBrowseModal({
                     <p>
                       {pickedSession.status === 'active' ? '进行中' : '已结束'}
                       {pickedSession.summary ? ` · ${pickedSession.summary}` : ''}
+                      {pickedSession.started_at ? ` · ${formatShort(pickedSession.started_at)}` : ''}
                     </p>
                   </div>
                 </header>
@@ -647,6 +677,7 @@ export function StudentArchivePage() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
   const [browseKind, setBrowseKind] = useState<ArchiveBrowseKind | null>(null)
+  const [forcedSessionId, setForcedSessionId] = useState<number | null>(null)
 
   const loadStudents = useCallback(async () => {
     setLoading(true)
@@ -667,6 +698,7 @@ export function StudentArchivePage() {
         setActiveId(null)
         setDetail(null)
         setBrowseKind(null)
+        setForcedSessionId(null)
       }
     } catch (err) {
       setError(getErrorMessage(err, '无法加载学生列表'))
@@ -782,6 +814,7 @@ export function StudentArchivePage() {
                       onClick={() => {
                         setActiveId(s.id)
                         setBrowseKind(null)
+                        setForcedSessionId(null)
                       }}
                     >
                       <span className="archive-student__name">
@@ -882,7 +915,10 @@ export function StudentArchivePage() {
                 <button
                   type="button"
                   className="counselor-panel counselor-panel--journal counselor-peek"
-                  onClick={() => setBrowseKind('journals')}
+                  onClick={() => {
+                    setForcedSessionId(null)
+                    setBrowseKind('journals')
+                  }}
                 >
                   <PanelTitle
                     icon={BookOpenText}
@@ -910,7 +946,10 @@ export function StudentArchivePage() {
                 <button
                   type="button"
                   className="counselor-panel counselor-peek"
-                  onClick={() => setBrowseKind('sessions')}
+                  onClick={() => {
+                    setForcedSessionId(null)
+                    setBrowseKind('sessions')
+                  }}
                 >
                   <PanelTitle
                     icon={MessageSquareQuote}
@@ -953,7 +992,15 @@ export function StudentArchivePage() {
           studentName={student.name}
           journals={detail.journals}
           sessions={detail.sessions}
-          onClose={() => setBrowseKind(null)}
+          forcedSessionId={forcedSessionId}
+          onJumpToSession={(sid) => {
+            setForcedSessionId(sid)
+            setBrowseKind('sessions')
+          }}
+          onClose={() => {
+            setBrowseKind(null)
+            setForcedSessionId(null)
+          }}
         />
       ) : null}
     </div>

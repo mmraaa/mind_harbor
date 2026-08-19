@@ -3974,23 +3974,54 @@ a.tool-card__breathing-cta {
   margin-top: 14px;
 }
 
-.archive-browse__journal-meta p {
+.archive-browse__journal-meta p,
+.archive-browse__journal-meta__item {
   display: grid;
   gap: 4px;
   margin: 0;
-  padding: 12px 14px;
+  padding: 13px 14px;
   border-radius: 16px 16px 16px 8px;
   background: rgba(255, 250, 240, 0.86);
-  border: 1px solid rgba(88, 117, 101, 0.12);
+  border: 1px solid rgba(88, 117, 101, 0.18);
+  border-left: 4px solid rgba(111, 143, 124, 0.55);
   color: var(--ink-soft);
-  font-size: 0.88rem;
+  font-size: 0.92rem;
 }
 
-.archive-browse__journal-meta strong {
+.archive-browse__journal-meta strong,
+.archive-browse__journal-meta__item strong {
   color: var(--sage-dark);
   font-family: var(--font-ui);
-  font-size: 0.72rem;
+  font-size: 0.76rem;
   letter-spacing: 0.06em;
+}
+
+.archive-journal-jump {
+  margin-top: 14px;
+}
+
+.archive-journal-jump .ghost-button {
+  width: fit-content;
+}
+
+.archive-browse__journal-meta__item span,
+.archive-browse__journal-meta p span {
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 650;
+}
+
+.archive-browse__journal-meta__item--stress {
+  background: rgba(232, 133, 59, 0.12);
+  border: 1px solid rgba(232, 133, 59, 0.22);
+  border-left-color: rgba(232, 133, 59, 0.75);
+}
+
+.archive-browse__journal-meta__item--support {
+  background: rgba(95, 122, 103, 0.10);
+  border: 1px solid rgba(95, 122, 103, 0.22);
+  border-left-color: rgba(95, 122, 103, 0.7);
 }
 
 .archive-browse__replay {

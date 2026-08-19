@@ -240,6 +240,7 @@ def student_detail(
                 "content": j.content,
                 "mood_score": j.mood_score,
                 "created_at": _iso(j.created_at),
+                "session_id": j.session_id,
                 "stress_source": emotion_by_journal.get(j.id).stress_source if emotion_by_journal.get(j.id) else None,
                 "support_need": emotion_by_journal.get(j.id).support_need if emotion_by_journal.get(j.id) else None,
             }
