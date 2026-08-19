@@ -577,6 +577,22 @@ function ArchiveBrowseModal({
                   <div className="archive-browse__journal-body">
                     {pickedJournal.content?.trim() ? pickedJournal.content : '这篇日记还没有正文。'}
                   </div>
+                  {(pickedJournal.stress_source || pickedJournal.support_need) && (
+                    <div className="archive-browse__journal-meta">
+                      {pickedJournal.stress_source ? (
+                        <p>
+                          <strong>压力来源</strong>
+                          <span>{pickedJournal.stress_source}</span>
+                        </p>
+                      ) : null}
+                      {pickedJournal.support_need ? (
+                        <p>
+                          <strong>支持需求</strong>
+                          <span>{pickedJournal.support_need}</span>
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
                 </article>
               )
             ) : !pickedSession ? (

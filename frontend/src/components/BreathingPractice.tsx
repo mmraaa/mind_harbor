@@ -33,6 +33,12 @@ export function BreathingPractice({ compact = false }: Props) {
     return () => stopTimer()
   }, [])
 
+  useEffect(() => {
+    if (session === 'running' && hasCycle && secondsLeft === 0) {
+      advancePhase()
+    }
+  }, [secondsLeft, session, hasCycle])
+
   function stopTimer() {
     if (timerRef.current != null) {
       window.clearInterval(timerRef.current)
@@ -40,7 +46,7 @@ export function BreathingPractice({ compact = false }: Props) {
     }
   }
 
-  function tickPhase(): number {
+  function advancePhase() {
     const cycle = cycleRef.current
     let next = phaseRef.current + 1
     if (next >= cycle.length) {
@@ -49,7 +55,7 @@ export function BreathingPractice({ compact = false }: Props) {
     }
     phaseRef.current = next
     setPhaseIndex(next)
-    return cycle[next].seconds
+    setSecondsLeft(cycle[next].seconds)
   }
 
   function startTicker() {
@@ -58,7 +64,8 @@ export function BreathingPractice({ compact = false }: Props) {
       if (sessionRef.current !== 'running') return
       setSecondsLeft((prev) => {
         if (prev > 1) return prev - 1
-        return tickPhase()
+        // 到 1 时不在这里切换，而是先返回 0 触发一次渲染
+        return 0
       })
     }, 1000)
   }

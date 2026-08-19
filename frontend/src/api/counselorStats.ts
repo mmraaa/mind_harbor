@@ -76,6 +76,8 @@ export type StudentDetail = {
     content: string
     mood_score: number | null
     created_at: string | null
+    stress_source: string | null
+    support_need: string | null
   }[]
   sessions: StudentSessionIndex[]
 }

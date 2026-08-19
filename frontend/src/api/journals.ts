@@ -10,8 +10,6 @@ export type JournalItem = {
   emotion?: {
     category?: string
     intensity?: number
-    stress_source?: string | null
-    support_need?: string | null
   }
 }
 

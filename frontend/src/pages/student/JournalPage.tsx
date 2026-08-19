@@ -71,7 +71,6 @@ function JournalEntryRow({ item }: { item: JournalItem }) {
           <div className="diary-entry__tags">
             {item.emotion?.intensity != null && <span>强度 {item.emotion.intensity}/10</span>}
             {item.mood_score != null && <span>mood {item.mood_score}</span>}
-            {item.emotion?.stress_source && <span>#{item.emotion.stress_source}</span>}
           </div>
           <span className="diary-entry__cta">阅读全文 →</span>
         </div>
@@ -305,23 +304,6 @@ export function JournalDetailPage() {
               </div>
 
               <div className="diary-detail-body">{item.content || item.summary}</div>
-
-              {(item.emotion?.stress_source || item.emotion?.support_need) && (
-                <div className="diary-detail-aside">
-                  {item.emotion.stress_source && (
-                    <p>
-                      <strong>压力来源</strong>
-                      {item.emotion.stress_source}
-                    </p>
-                  )}
-                  {item.emotion.support_need && (
-                    <p>
-                      <strong>支持需求</strong>
-                      {item.emotion.support_need}
-                    </p>
-                  )}
-                </div>
-              )}
             </>
           )}
         </article>

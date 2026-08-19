@@ -171,6 +171,11 @@ def student_detail(
         .limit(20)
         .all()
     )
+    journal_ids = [j.id for j in journals]
+    journal_emotions = (
+        db.query(Emotion).filter(Emotion.journal_id.in_(journal_ids)).all() if journal_ids else []
+    )
+    emotion_by_journal = {e.journal_id: e for e in journal_emotions if e.journal_id is not None}
     sessions = (
         db.query(ChatSession)
         .filter_by(user_id=student_id)
@@ -235,6 +240,8 @@ def student_detail(
                 "content": j.content,
                 "mood_score": j.mood_score,
                 "created_at": _iso(j.created_at),
+                "stress_source": emotion_by_journal.get(j.id).stress_source if emotion_by_journal.get(j.id) else None,
+                "support_need": emotion_by_journal.get(j.id).support_need if emotion_by_journal.get(j.id) else None,
             }
             for j in journals
         ],

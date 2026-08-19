@@ -26,13 +26,15 @@ def _seed_student_data(db):
     u = User(role="student", username="stuA", name="同学甲", password_hash="x")
     db.add(u)
     db.flush()
+    journal = Journal(user_id=u.id, summary="考前焦虑", content="有点慌", mood_score=5)
+    db.add(journal)
+    db.flush()
     db.add_all(
         [
-            Emotion(user_id=u.id, category="anxious", intensity=8, stress_source="考试"),
+            Emotion(user_id=u.id, category="anxious", intensity=8, stress_source="考试", support_need="陪伴", journal_id=journal.id),
             Emotion(user_id=u.id, category="hopeful", intensity=6),
         ]
     )
-    db.add(Journal(user_id=u.id, summary="考前焦虑", content="有点慌", mood_score=5))
     risky = ChatSession(user_id=u.id, title="风险会话", risk_level="high", summary="触发危机关键词")
     db.add(risky)
     db.flush()
@@ -71,6 +73,8 @@ def test_students_and_detail(client, db, seed_counselor, seed_user):
     assert len(body["emotion_series"]) >= 2
     assert body["journals"][0]["summary"] == "考前焦虑"
     assert body["journals"][0]["content"] == "有点慌"
+    assert body["journals"][0]["stress_source"] == "考试"
+    assert body["journals"][0]["support_need"] == "陪伴"
     assert body["student"]["role"] == "student"
     assert body["student"]["username"] == "stuA"
     assert body["profile"]["session_count"] >= 2

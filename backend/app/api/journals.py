@@ -30,8 +30,6 @@ def _journal_out(db: Session, j: Journal, with_content: bool) -> dict:
         out["emotion"] = {
             "category": emo.category,
             "intensity": emo.intensity,
-            "stress_source": emo.stress_source,
-            "support_need": emo.support_need,
         }
     return out
 
