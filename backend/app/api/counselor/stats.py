@@ -168,7 +168,6 @@ def student_detail(
         db.query(Journal)
         .filter_by(user_id=student_id)
         .order_by(Journal.id.desc())
-        .limit(20)
         .all()
     )
     journal_ids = [j.id for j in journals]
@@ -180,7 +179,6 @@ def student_detail(
         db.query(ChatSession)
         .filter_by(user_id=student_id)
         .order_by(ChatSession.id.desc())
-        .limit(20)
         .all()
     )
     latest = emotions[-1] if emotions else None
