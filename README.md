@@ -46,14 +46,3 @@ backend/    FastAPI 模块化单体(core / api / services / ai / models / schema
 frontend/   React 三角色前端(pages/{student,admin,counselor} / api / stores / router)
 docs/       设计文档与实施计划
 ```
-
-## 文档
-
-- 架构设计:`docs/superpowers/specs/2026-08-14-mindharbor-design.md`
-- 实施计划:`docs/superpowers/plans/2026-08-14-mindharbor-implementation.md`
-
-## 安全边界
-
-- 本项目为教学演示用途;危机干预请优先联系专业热线与校内咨询渠道。
-- 密钥仅存环境变量,`.env` 不入库;SQL Agent 只读 + 白名单。
-
