@@ -3530,6 +3530,58 @@ a.tool-card__breathing-cta {
   position: relative;
 }
 
+.diary-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 24px 0 0;
+  padding-top: 20px;
+  border-top: 1px dashed rgba(210, 197, 179, 0.55);
+}
+
+.diary-pager__status {
+  min-width: 7rem;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
+.diary-pager__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 14px;
+  border: 1px solid rgba(111, 143, 124, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 250, 240, 0.85);
+  color: var(--sage-dark);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 620;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.diary-pager__btn:hover:not(:disabled) {
+  background: var(--sage-pale);
+  border-color: var(--sage);
+}
+
+.diary-pager__btn:focus-visible {
+  outline: 2px solid var(--sage);
+  outline-offset: 2px;
+}
+
+.diary-pager__btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
 .diary-timeline {
   display: grid;
   gap: 0;

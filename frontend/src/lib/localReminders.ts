@@ -1,3 +1,5 @@
+import { api } from '../api/client'
+
 const STORAGE_KEY = 'mh_local_reminders'
 
 export type LocalReminder = {
@@ -46,6 +48,12 @@ function clearTimer(id: string) {
   }
 }
 
+function notifyBackendDone(localId: string) {
+  const match = localId.match(/^db-(\d+)$/)
+  if (!match) return
+  api.patch(`/reminders/${match[1]}/done`).catch(() => {})
+}
+
 function fireItem(item: LocalReminder, missed = false) {
   const items = loadAll()
   const idx = items.findIndex((x) => x.id === item.id)
@@ -54,6 +62,7 @@ function fireItem(item: LocalReminder, missed = false) {
   items[idx] = { ...items[idx], fired: true }
   saveAll(items)
   clearTimer(item.id)
+  notifyBackendDone(item.id)
 
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try {

@@ -1,9 +1,11 @@
-import { CalendarDays, LockKeyhole, Sparkles } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { CalendarDays, ChevronLeft, ChevronRight, LockKeyhole, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getMyJournal, listMyJournals, type JournalItem } from '../../api/journals'
 import { getErrorMessage } from '../../api/client'
 import { emotionDisplay } from '../../data/emotions'
+
+const PAGE_SIZE = 8
 
 function entryWhen(iso?: string) {
   if (!iso) return { day: '--', month: '', time: '', year: '' }
@@ -20,8 +22,18 @@ function entryWhen(iso?: string) {
   }
 }
 
-function DateRail({ iso }: { iso?: string }) {
-  const when = entryWhen(iso)
+function whenFromDate(date: Date) {
+  return {
+    day: String(date.getDate()).padStart(2, '0'),
+    month: new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(date),
+    time: new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(date),
+    year: String(date.getFullYear()),
+  }
+}
+
+function DateRail({ mode = 'iso', iso }: { mode?: 'now' | 'iso'; iso?: string }) {
+  const when = mode === 'now' ? whenFromDate(new Date()) : entryWhen(iso)
+
   return (
     <aside className="diary-date-rail" aria-hidden="true">
       <span>NOW</span>
@@ -68,10 +80,78 @@ function JournalEntryRow({ item }: { item: JournalItem }) {
   )
 }
 
+function DiaryBookPages({
+  items,
+  totalCount,
+  page,
+  totalPages,
+  onPageChange,
+}: {
+  items: JournalItem[]
+  totalCount: number
+  page: number
+  totalPages: number
+  onPageChange: (next: number) => void
+}) {
+  const canPrev = page > 0
+  const canNext = page < totalPages - 1
+
+  return (
+    <section className="diary-list" aria-label="情绪日记时间轴">
+      <div className="section-heading">
+        <div>
+          <p className="section-kicker">最近记录</p>
+          <h2>你已经认真看见自己 {totalCount} 次</h2>
+        </div>
+        <span className="diary-badge">
+          <Sparkles size={14} aria-hidden />
+          自动生成
+        </span>
+      </div>
+
+      <div className="diary-timeline">
+        {items.map((j) => (
+          <JournalEntryRow key={j.id} item={j} />
+        ))}
+      </div>
+
+      <nav className="diary-pager" aria-label="日记分页">
+        <button
+          type="button"
+          className="diary-pager__btn"
+          disabled={!canPrev}
+          onClick={() => onPageChange(page - 1)}
+        >
+          <ChevronLeft size={16} aria-hidden />
+          上一页
+        </button>
+        <span className="diary-pager__status">
+          第 {page + 1} / {totalPages} 页
+        </span>
+        <button
+          type="button"
+          className="diary-pager__btn"
+          disabled={!canNext}
+          onClick={() => onPageChange(page + 1)}
+        >
+          下一页
+          <ChevronRight size={16} aria-hidden />
+        </button>
+      </nav>
+
+      <p className="diary-ending">
+        <CalendarDays size={16} aria-hidden />
+        每一次记录，都是在告诉自己：我的感受值得被看见。
+      </p>
+    </section>
+  )
+}
+
 export default function JournalPage() {
   const [items, setItems] = useState<JournalItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(0)
 
   useEffect(() => {
     let alive = true
@@ -90,12 +170,26 @@ export default function JournalPage() {
     }
   }, [])
 
-  const latest = items[0]?.created_at
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE))
+
+  useEffect(() => {
+    if (page >= totalPages) setPage(0)
+  }, [page, totalPages])
+
+  const pageItems = useMemo(
+    () => items.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE),
+    [items, page],
+  )
+
+  const handlePageChange = (next: number) => {
+    if (next < 0 || next >= totalPages) return
+    setPage(next)
+  }
 
   return (
     <div className="journal-workspace">
       <div className="diary-scene">
-        <DateRail iso={latest} />
+        <DateRail mode="now" />
         <div className="diary-paper">
           <header className="page-header">
             <div>
@@ -123,29 +217,13 @@ export default function JournalPage() {
           ) : items.length === 0 ? (
             <p className="empty-state">还没有日记。在陪伴页结束会话后，记录会出现在这里。</p>
           ) : (
-            <section className="diary-list" aria-label="情绪日记时间轴">
-              <div className="section-heading">
-                <div>
-                  <p className="section-kicker">最近记录</p>
-                  <h2>你已经认真看见自己 {items.length} 次</h2>
-                </div>
-                <span className="diary-badge">
-                  <Sparkles size={14} aria-hidden />
-                  自动生成
-                </span>
-              </div>
-
-              <div className="diary-timeline">
-                {items.map((j) => (
-                  <JournalEntryRow key={j.id} item={j} />
-                ))}
-              </div>
-
-              <p className="diary-ending">
-                <CalendarDays size={16} aria-hidden />
-                每一次记录，都是在告诉自己：我的感受值得被看见。
-              </p>
-            </section>
+            <DiaryBookPages
+              items={pageItems}
+              totalCount={items.length}
+              page={page}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+            />
           )}
         </div>
       </div>
