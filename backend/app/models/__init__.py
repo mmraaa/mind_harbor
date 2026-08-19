@@ -1,5 +1,6 @@
 """模型注册:导入本模块即可让 Base.metadata 包含全部表。"""
 
+from app.admin_module.models import AccountControl, ApiServiceConfig
 from app.models.emotion import Emotion, Journal
 from app.models.knowledge import KnowledgeChunk, KnowledgeDoc
 from app.models.memory import UserMemory
@@ -20,4 +21,6 @@ __all__ = [
     "KnowledgeDoc",
     "KnowledgeChunk",
     "UserMemory",
+    "AccountControl",
+    "ApiServiceConfig",
 ]

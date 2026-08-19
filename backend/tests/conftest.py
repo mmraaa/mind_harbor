@@ -28,6 +28,15 @@ def engine():
     Base.metadata.drop_all(eng)
 
 
+@pytest.fixture(autouse=True)
+def disable_lan_sync_during_tests(monkeypatch):
+    """测试库必须隔离,任何回归测试都不得写入局域网数据库。"""
+    monkeypatch.setenv("SYNC_ENABLED", "false")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def db(engine):
     factory = sessionmaker(bind=engine)

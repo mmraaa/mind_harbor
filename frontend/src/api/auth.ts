@@ -1,8 +1,27 @@
-import { api, type TokenResponse, type UserOut } from './client'
+import { authApi } from '../features/auth/authApi'
+import type { Role } from '../features/auth/roles'
+import { api, type TokenResponse, type UserOut, type UserRole } from './client'
 
-export async function login(username: string, password: string): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>('/auth/login', { username, password })
-  return data
+function toTeamUser(user: { id: number; username: string; nickname: string; role: Role }): UserOut {
+  return {
+    id: user.id,
+    username: user.username,
+    name: user.nickname,
+    role: user.role,
+  }
+}
+
+export async function login(
+  username: string,
+  password: string,
+  role: UserRole = 'student',
+): Promise<TokenResponse> {
+  const response = await authApi.login({ username, password, role })
+  return {
+    access_token: response.access_token,
+    token_type: response.token_type,
+    user: toTeamUser(response.user),
+  }
 }
 
 export async function register(
@@ -10,8 +29,17 @@ export async function register(
   password: string,
   name = '',
 ): Promise<TokenResponse> {
-  const { data } = await api.post<TokenResponse>('/auth/register', { username, password, name })
-  return data
+  const response = await authApi.register({
+    username,
+    password,
+    nickname: name,
+    role: 'student',
+  })
+  return {
+    access_token: response.access_token,
+    token_type: response.token_type,
+    user: toTeamUser(response.user),
+  }
 }
 
 export async function fetchMe(): Promise<UserOut> {

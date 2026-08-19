@@ -22,6 +22,14 @@ class Settings(BaseSettings):
     postgres_user: str = "mindharbor"
     postgres_password: str = "mindharbor"
 
+    # 局域网镜像库:默认关闭,测试和单机开发不会产生外部写入。
+    sync_enabled: bool = False
+    sync_postgres_host: str = ""
+    sync_postgres_port: int = 5432
+    sync_postgres_db: str = ""
+    sync_postgres_user: str = ""
+    sync_postgres_password: str = ""
+
     # 认证
     jwt_secret: str = "dev-change-me-0123456789abcdefghij"
     jwt_algorithm: str = "HS256"
@@ -51,6 +59,13 @@ class Settings(BaseSettings):
     tts_base_url: str = ""
     tts_model: str = ""
     tts_voice: str = ""
+
+    @property
+    def sync_database_url(self) -> str:
+        return (
+            f"postgresql+psycopg://{self.sync_postgres_user}:{self.sync_postgres_password}"
+            f"@{self.sync_postgres_host}:{self.sync_postgres_port}/{self.sync_postgres_db}"
+        )
 
     @property
     def database_url(self) -> str:

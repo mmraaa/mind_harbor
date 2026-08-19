@@ -21,19 +21,22 @@ import dashscope
 from dashscope.audio.http_tts.http_speech_synthesizer import HttpSpeechSynthesizer
 
 from app.core.config import get_settings
+from app.services.api_config import ResolvedService, record_usage, resolve_service
 
 TTS_TIMEOUT_SECONDS = 60
 
 
 def _client_config():
-    s = get_settings()
-    if not s.tts_api_key:
+    config = resolve_service("tts")
+    if not config.enabled:
+        raise RuntimeError("TTS 服务已停用")
+    if not config.api_key:
         raise RuntimeError("TTS 未配置:请设置环境变量 TTS_API_KEY")
-    if not s.tts_base_url:
+    if not config.base_url:
         raise RuntimeError("TTS 未配置:请设置环境变量 TTS_BASE_URL")
-    if not s.tts_model:
+    if not config.model:
         raise RuntimeError("TTS 未配置:请设置环境变量 TTS_MODEL")
-    return s
+    return config
 
 
 def _sdk_base_url(base_url: str) -> str:
@@ -54,16 +57,32 @@ def synthesize_with_url(text: str, *, voice: str | None = None) -> dict:
     Raises:
         RuntimeError: 配置缺失 / 合成失败(非 200 / 无 audio_url)。
     """
-    s = _client_config()
-    dashscope.base_http_api_url = _sdk_base_url(s.tts_base_url)
+    primary = _client_config()
+    configs = [primary] + ([primary.fallback] if primary.fallback else [])
+    last_error: Exception | None = None
+    for config in configs:
+        if not config or not config.enabled or not config.api_key or not config.base_url or not config.model:
+            continue
+        try:
+            return _synthesize_with_config(config, text, voice)
+        except Exception as exc:  # noqa: BLE001 - 主服务失败时仅尝试一次备用服务
+            last_error = exc
+            record_usage(primary.service_id, failed=True)
+    if last_error:
+        raise last_error
+    raise RuntimeError("TTS 未配置:请设置环境变量 TTS_API_KEY")
 
+
+def _synthesize_with_config(config: ResolvedService, text: str, voice: str | None) -> dict:
+    dashscope.base_http_api_url = _sdk_base_url(config.base_url)
+    settings = get_settings()
     result = HttpSpeechSynthesizer.call(
-        model=s.tts_model,
+        model=config.model,
         text=text,
-        voice=voice or s.tts_voice or "longanhuan_v3.6",
+        voice=voice or settings.tts_voice or "longanhuan_v3.6",
         format="mp3",
         stream=False,
-        api_key=s.tts_api_key,
+        api_key=config.api_key,
     )
 
     if result is None:
@@ -77,6 +96,7 @@ def synthesize_with_url(text: str, *, voice: str | None = None) -> dict:
     if not audio_url:
         raise RuntimeError("CosyVoice 未返回音频 URL")
 
-    resp = httpx.get(audio_url, timeout=TTS_TIMEOUT_SECONDS)
+    resp = httpx.get(audio_url, timeout=TTS_TIMEOUT_SECONDS, trust_env=False)
     resp.raise_for_status()
+    record_usage("tts")
     return {"audio": resp.content, "url": audio_url}

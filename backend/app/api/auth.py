@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.admin_module.models import AccountControl
 from app.api.deps import get_current_user
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
@@ -15,6 +16,9 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     user = db.query(User).filter_by(username=body.username).first()
     if user is None or not verify_password(body.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "用户名或密码错误")
+    control = db.query(AccountControl).filter_by(user_id=user.id).first()
+    if control is not None and not control.is_enabled:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "账号已停用，请联系管理员")
     return TokenResponse(
         access_token=create_access_token(user.id),
         user=UserOut.model_validate(user),

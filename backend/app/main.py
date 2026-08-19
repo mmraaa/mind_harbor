@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import auth, chat, favorites, health, journals, reminders
+from app.api.admin import router as admin_router
 from app.api.counselor.chat import router as counselor_chat_router
 from app.api.counselor.stats import router as counselor_stats_router
 from app.core.config import get_settings
@@ -28,3 +29,4 @@ app.include_router(favorites.router, prefix=settings.api_prefix)
 app.include_router(reminders.router, prefix=settings.api_prefix)
 app.include_router(counselor_chat_router, prefix=settings.api_prefix)
 app.include_router(counselor_stats_router, prefix=settings.api_prefix)
+app.include_router(admin_router, prefix=settings.api_prefix)
