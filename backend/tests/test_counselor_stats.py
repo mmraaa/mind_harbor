@@ -47,16 +47,6 @@ def _seed_student_data(db):
     return u
 
 
-def test_overview(client, db, seed_counselor, seed_user):
-    _seed_student_data(db)
-    r = client.get("/api/v1/counselor/stats/overview", headers={"Authorization": f"Bearer {_login(client)}"})
-    assert r.status_code == 200
-    d = r.json()
-    assert d["students"] >= 1
-    assert d["high_risk_sessions"] >= 1
-    assert d["journals"] >= 1
-
-
 def test_emotion_distribution(client, db, seed_counselor, seed_user):
     _seed_student_data(db)
     r = client.get("/api/v1/counselor/stats/emotion-distribution?days=30",
@@ -80,6 +70,7 @@ def test_students_and_detail(client, db, seed_counselor, seed_user):
     body = detail.json()
     assert len(body["emotion_series"]) >= 2
     assert body["journals"][0]["summary"] == "考前焦虑"
+    assert body["journals"][0]["content"] == "有点慌"
     assert body["student"]["role"] == "student"
     assert body["student"]["username"] == "stuA"
     assert body["profile"]["session_count"] >= 2
@@ -88,16 +79,11 @@ def test_students_and_detail(client, db, seed_counselor, seed_user):
     assert any(s["title"] == "风险会话" and s["message_count"] >= 2 for s in body["sessions"])
 
 
-def test_session_detail_and_messages(client, db, seed_counselor, seed_user):
+def test_session_messages(client, db, seed_counselor, seed_user):
     u = _seed_student_data(db)
     token = _login(client)
     h = {"Authorization": f"Bearer {token}"}
     risky = db.query(ChatSession).filter_by(user_id=u.id, risk_level="high").one()
-
-    meta = client.get(f"/api/v1/counselor/stats/sessions/{risky.id}", headers=h)
-    assert meta.status_code == 200
-    assert meta.json()["student_name"] == "同学甲"
-    assert meta.json()["message_count"] >= 2
 
     msgs = client.get(f"/api/v1/counselor/stats/sessions/{risky.id}/messages", headers=h)
     assert msgs.status_code == 200
@@ -117,16 +103,7 @@ def test_session_messages_requires_counselor(client, db, seed_counselor, seed_us
     assert r.status_code == 403
 
 
-def test_sessions_risk_filter(client, db, seed_counselor, seed_user):
-    _seed_student_data(db)
-    r = client.get("/api/v1/counselor/stats/sessions?risk=high",
-                   headers={"Authorization": f"Bearer {_login(client)}"})
-    d = r.json()
-    assert all(s["risk_level"] == "high" for s in d["sessions"])
-    assert any(s["student_name"] == "同学甲" for s in d["sessions"])
-
-
 def test_stats_requires_counselor(client, seed_user, db):
     token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()["access_token"]
-    r = client.get("/api/v1/counselor/stats/overview", headers={"Authorization": f"Bearer {token}"})
+    r = client.get("/api/v1/counselor/stats/students", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403

@@ -1,6 +1,6 @@
 # MindHarbor API 文档
 
-> 由 `scripts/gen_api_docs.py` 从运行中的后端自动生成(共 19 个端点)。
+> 由 `scripts/gen_api_docs.py` / openapi.json 自动生成(共 18 个端点)。
 > 接口基址:`http://172.16.2.91:8000/api/v1`
 
 ## 鉴权
@@ -20,6 +20,7 @@ Authorization: Bearer <access_token>
 | GET | `/api/v1/api/v1/auth/me` | Me |
 | POST | `/api/v1/api/v1/auth/register` | Register |
 | GET | `/api/v1/api/v1/chat/sessions` | List Sessions |
+| GET | `/api/v1/api/v1/chat/sessions/{session_id}` | Get Session |
 | GET | `/api/v1/api/v1/chat/sessions/{session_id}/messages` | List Messages |
 | POST | `/api/v1/api/v1/chat/sessions/{session_id}/end` | End Session |
 | POST | `/api/v1/api/v1/chat` | Chat |
@@ -29,12 +30,10 @@ Authorization: Bearer <access_token>
 | DELETE | `/api/v1/api/v1/favorites/{message_id}` | Remove Favorite |
 | GET | `/api/v1/api/v1/favorites/mine` | My Favorites |
 | POST | `/api/v1/api/v1/counselor/chat` | Counselor Chat |
-| GET | `/api/v1/api/v1/counselor/stats/overview` | Overview |
 | GET | `/api/v1/api/v1/counselor/stats/emotion-distribution` | Emotion Distribution |
-| GET | `/api/v1/api/v1/counselor/stats/emotion-trend` | Emotion Trend |
 | GET | `/api/v1/api/v1/counselor/stats/students` | Students |
 | GET | `/api/v1/api/v1/counselor/stats/students/{student_id}/detail` | Student Detail |
-| GET | `/api/v1/api/v1/counselor/stats/sessions` | Sessions |
+| GET | `/api/v1/api/v1/counselor/stats/sessions/{session_id}/messages` | Session Messages |
 
 ## GET `/api/v1/api/v1/health`
 
@@ -88,6 +87,13 @@ Authorization: Bearer <access_token>
 ## GET `/api/v1/api/v1/chat/sessions`
 
 **说明**:List Sessions
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/chat/sessions/{session_id}`
+
+**说明**:Get Session
 
 **响应**:`Successful Response`
 
@@ -165,23 +171,9 @@ Authorization: Bearer <access_token>
 
 **响应**:`Successful Response`
 
-## GET `/api/v1/api/v1/counselor/stats/overview`
-
-**说明**:Overview
-
-**响应**:`Successful Response`
-
-
 ## GET `/api/v1/api/v1/counselor/stats/emotion-distribution`
 
 **说明**:Emotion Distribution
-
-**响应**:`Successful Response`
-
-
-## GET `/api/v1/api/v1/counselor/stats/emotion-trend`
-
-**说明**:Emotion Trend
 
 **响应**:`Successful Response`
 
@@ -200,9 +192,9 @@ Authorization: Bearer <access_token>
 **响应**:`Successful Response`
 
 
-## GET `/api/v1/api/v1/counselor/stats/sessions`
+## GET `/api/v1/api/v1/counselor/stats/sessions/{session_id}/messages`
 
-**说明**:Sessions
+**说明**:Session Messages
 
 **响应**:`Successful Response`
 
