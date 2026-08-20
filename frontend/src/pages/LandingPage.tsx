@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getAuthPath } from '../features/auth/roles'
 
 const scenes = [
   {
@@ -48,7 +47,7 @@ export default function LandingPage() {
         <nav aria-label="主要导航">
           <a href="#about">关于陪伴</a>
           <a href="#moments">自然时刻</a>
-          <Link to={getAuthPath('student', 'login')}>登录</Link>
+          <Link to="/auth/login">登录</Link>
         </nav>
       </header>
 
@@ -61,7 +60,7 @@ export default function LandingPage() {
           <h1 id="hero-heading">给心一个<br />可以靠岸的地方。</h1>
           <p>MindHarbor 把温柔的陪伴，留在每一个需要慢下来的时刻。</p>
           <div className="landing-hero-actions">
-            <Link className="button button-sun" to={getAuthPath('student', 'register')}>开始一段陪伴</Link>
+            <Link className="button button-sun" to="/auth/register">开始一段陪伴</Link>
             <a className="text-link text-link-light" href="#about">看看这里有什么</a>
           </div>
         </div>
@@ -134,7 +133,7 @@ export default function LandingPage() {
           <p className="section-number">03 / THE SOFTEST COMPANY</p>
           <h2 id="pet-heading">陪伴有时<br />只是安静地在。</h2>
           <p>一只小狗趴在脚边，一束阳光落在肩上。那些没有刻意安慰的瞬间，也能让人重新感到自己被世界温柔接住。</p>
-          <Link className="text-link" to={getAuthPath('student', 'register')}>带着这份温暖进入 MindHarbor</Link>
+          <Link className="text-link" to="/auth/register">带着这份温暖进入 MindHarbor</Link>
         </div>
       </section>
 
@@ -143,8 +142,8 @@ export default function LandingPage() {
           <p className="section-number">READY WHEN YOU ARE</p>
           <h2 id="entry-heading">从今天开始，<br />给自己多一点空间。</h2>
           <div className="landing-entry-actions">
-            <Link className="button button-primary" to={getAuthPath('student', 'register')}>创建用户账号</Link>
-            <Link className="text-link" to={getAuthPath('student', 'login')}>我已经有账号</Link>
+            <Link className="button button-primary" to="/auth/register">创建用户账号</Link>
+            <Link className="text-link" to="/auth/login">我已经有账号</Link>
           </div>
         </div>
       </section>

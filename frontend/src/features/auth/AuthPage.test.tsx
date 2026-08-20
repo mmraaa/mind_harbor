@@ -1,27 +1,35 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 
 import { AuthPage } from './AuthPage'
 
 describe('AuthPage', () => {
-  it('clears entered credentials when the selected role changes', async () => {
+  it('shows unified login without role switch', () => {
     render(
-      <MemoryRouter initialEntries={['/auth/student/register']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <MemoryRouter initialEntries={['/auth/login']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
-          <Route path="/auth/:role/:mode" element={<AuthPage />} />
+          <Route path="/auth/:mode" element={<AuthPage />} />
         </Routes>
       </MemoryRouter>,
     )
 
-    fireEvent.change(screen.getByLabelText('昵称'), { target: { value: '小林' } })
-    fireEvent.change(screen.getByLabelText('账号'), { target: { value: 'xiaolin' } })
-    fireEvent.change(screen.getByLabelText('密码', { exact: true }), { target: { value: 'correct-horse' } })
-    fireEvent.click(screen.getByRole('button', { name: '管理' }))
+    expect(screen.getByRole('heading', { name: '回到为你留着的位置' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '管理' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '登录' })).toBeInTheDocument()
+  })
 
-    await waitFor(() => expect(screen.getByText(/当前以/).textContent).toContain('管理'))
-    expect((screen.getByLabelText('昵称') as HTMLInputElement).value).toBe('')
-    expect((screen.getByLabelText('账号') as HTMLInputElement).value).toBe('')
-    expect((screen.getByLabelText('密码', { exact: true }) as HTMLInputElement).value).toBe('')
+  it('shows student-only register form', () => {
+    render(
+      <MemoryRouter initialEntries={['/auth/register']} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Routes>
+          <Route path="/auth/:mode" element={<AuthPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByRole('heading', { name: '把这份陪伴带回身边' })).toBeInTheDocument()
+    expect(screen.getByLabelText('昵称')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '创建用户账号' })).toBeInTheDocument()
   })
 })

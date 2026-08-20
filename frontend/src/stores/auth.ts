@@ -8,7 +8,7 @@ type AuthState = {
   loading: boolean
   bootstrapped: boolean
   bootstrap: () => Promise<void>
-  login: (username: string, password: string, role?: UserRole) => Promise<UserOut>
+  login: (username: string, password: string) => Promise<UserOut>
   register: (username: string, password: string, name?: string) => Promise<UserOut>
   logout: () => void
   homePath: () => string
@@ -41,10 +41,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  login: async (username, password, role = 'student') => {
+  login: async (username, password) => {
     set({ loading: true })
     try {
-      const res = await apiLogin(username, password, role)
+      const res = await apiLogin(username, password)
       setStoredToken(res.access_token)
       set({ token: res.access_token, user: res.user, loading: false })
       return res.user

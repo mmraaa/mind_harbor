@@ -726,36 +726,6 @@ input:focus-visible {
   color: var(--forest);
 }
 
-.role-switch {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 3px;
-  margin-top: 31px;
-  padding: 4px;
-  background: #e8e4d8;
-}
-
-.role-switch button {
-  min-height: 39px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: transparent;
-  color: var(--ink-soft);
-  font-size: 13px;
-  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
-}
-
-.role-switch button:hover {
-  color: var(--forest);
-}
-
-.role-switch button.is-active {
-  border-bottom-color: var(--coral);
-  background: var(--cream);
-  color: var(--forest);
-  font-weight: 700;
-}
-
 .auth-form {
   display: grid;
   gap: 19px;

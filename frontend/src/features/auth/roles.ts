@@ -38,7 +38,3 @@ export function isRole(value: string | undefined): value is Role {
 export function getRoleMeta(role: Role): RoleMeta {
   return roleMeta[role]
 }
-
-export function getAuthPath(role: Role, mode: AuthMode): string {
-  return `/auth/${role}/${mode}`
-}

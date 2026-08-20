@@ -31,7 +31,9 @@ export default function App() {
     <AuthBootstrap>
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/login" element={<Navigate to="/auth/student/login" replace />} />
+        <Route path="/login" element={<Navigate to="/auth/login" replace />} />
+        <Route path="/auth/:mode" element={<AuthPage />} />
+        {/* 兼容旧路径 /auth/:role/:mode */}
         <Route path="/auth/:role/:mode" element={<AuthPage />} />
 
         <Route element={<RequireAuth roles={['student']} />}>
@@ -69,7 +71,7 @@ export default function App() {
             <div style={{ padding: '20vh 24px', textAlign: 'center' }}>
               <h1>页面不存在</h1>
               <p style={{ color: 'var(--muted)', margin: '12px 0 20px' }}>回到登录入口再试一次。</p>
-              <a className="primary-button" href="/auth/student/login">
+              <a className="primary-button" href="/auth/login">
                 返回登录
               </a>
             </div>

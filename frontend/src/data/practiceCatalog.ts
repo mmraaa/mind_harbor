@@ -4,7 +4,6 @@ export type PracticeId = 'breathing' | 'sleep' | 'grounding' | 'schulte'
 export type PracticeCategory = 'breath' | 'sleep' | 'grounding' | 'focus'
 export type PracticeTone = 'sage' | 'clay' | 'night'
 export type PracticeModalLayout = 'immersive' | 'guided' | 'panel'
-export type PracticeMood = 'calm' | 'sleep' | 'focus'
 
 export type PracticeMeta = {
   id: PracticeId
@@ -18,20 +17,9 @@ export type PracticeMeta = {
   featured?: boolean
   tone: PracticeTone
   category: PracticeCategory
-  moods: PracticeMood[]
   icon: LucideIcon
   modalLayout: PracticeModalLayout
 }
-
-export const PRACTICE_MOODS: Array<{
-  id: PracticeMood
-  label: string
-  summary: string
-}> = [
-  { id: 'calm', label: '先把呼吸放慢', summary: '心跳有点快时，从这里开始。' },
-  { id: 'sleep', label: '给睡意腾出位置', summary: '不催自己入睡，先让白天慢慢退场。' },
-  { id: 'focus', label: '把注意力带回这里', summary: '脑子很乱时，先抓住一个具体目标。' },
-]
 
 export const PRACTICE_CATALOG: PracticeMeta[] = [
   {
@@ -46,7 +34,6 @@ export const PRACTICE_CATALOG: PracticeMeta[] = [
     featured: true,
     tone: 'sage',
     category: 'breath',
-    moods: ['calm'],
     icon: Wind,
     modalLayout: 'immersive',
   },
@@ -61,7 +48,6 @@ export const PRACTICE_CATALOG: PracticeMeta[] = [
     bestFor: '准备入睡、躺下后脑子停不下来',
     tone: 'night',
     category: 'sleep',
-    moods: ['sleep'],
     icon: MoonStar,
     modalLayout: 'guided',
   },
@@ -76,7 +62,6 @@ export const PRACTICE_CATALOG: PracticeMeta[] = [
     bestFor: '脑子很乱、情绪上来时需要落地',
     tone: 'clay',
     category: 'grounding',
-    moods: ['calm', 'focus'],
     icon: MapPin,
     modalLayout: 'guided',
   },
@@ -91,7 +76,6 @@ export const PRACTICE_CATALOG: PracticeMeta[] = [
     bestFor: '走神、注意力散开、想重新聚焦',
     tone: 'sage',
     category: 'focus',
-    moods: ['focus'],
     icon: Grid3X3,
     modalLayout: 'panel',
   },

@@ -1,6 +1,6 @@
 import { authApi } from '../features/auth/authApi'
 import type { Role } from '../features/auth/roles'
-import { api, type TokenResponse, type UserOut, type UserRole } from './client'
+import { api, type TokenResponse, type UserOut } from './client'
 
 function toTeamUser(user: { id: number; username: string; nickname: string; role: Role }): UserOut {
   return {
@@ -14,9 +14,8 @@ function toTeamUser(user: { id: number; username: string; nickname: string; role
 export async function login(
   username: string,
   password: string,
-  role: UserRole = 'student',
 ): Promise<TokenResponse> {
-  const response = await authApi.login({ username, password, role })
+  const response = await authApi.login({ username, password, role: 'student' })
   return {
     access_token: response.access_token,
     token_type: response.token_type,

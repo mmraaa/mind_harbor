@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { getErrorMessage } from '../../api/client'
-import { getAuthPath, getRoleMeta, isRole, roles, type AuthMode } from './roles'
+import { getRoleMeta, type AuthMode } from './roles'
 import { roleHome, useAuthStore } from '../../stores/auth'
 
 function isAuthMode(value: string | undefined): value is AuthMode {
@@ -9,41 +9,38 @@ function isAuthMode(value: string | undefined): value is AuthMode {
 }
 
 export function AuthPage() {
-  const { role: roleParam, mode: modeParam } = useParams()
+  const params = useParams()
+  // 兼容 /auth/:mode 和旧路径 /auth/:role/:mode
+  const modeParam = params.mode ?? params.role
   const navigate = useNavigate()
   const login = useAuthStore((state) => state.login)
   const register = useAuthStore((state) => state.register)
-  const logout = useAuthStore((state) => state.logout)
   const [nickname, setNickname] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const validRole = isRole(roleParam) ? roleParam : null
   const validMode = isAuthMode(modeParam) ? modeParam : null
 
   useEffect(() => {
-    if (!validRole || !validMode) {
-      return
-    }
+    if (!validMode) return
     setNickname('')
     setUsername('')
     setPassword('')
     setConfirmPassword('')
     setSubmitting(false)
     setError('')
-  }, [validMode, validRole])
+  }, [validMode])
 
-  if (!validRole || !validMode) {
-    return <Navigate to={getAuthPath('student', 'login')} replace />
+  if (!validMode) {
+    return <Navigate to="/auth/login" replace />
   }
 
-  const role = validRole
   const mode = validMode
-  const roleMeta = getRoleMeta(role)
   const isRegister = mode === 'register'
-  const alternateMode: AuthMode = isRegister ? 'login' : 'register'
+  // 登录页用学生视觉，注册页也用学生视觉（注册固定为学生角色）
+  const roleMeta = getRoleMeta('student')
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -55,16 +52,9 @@ export function AuthPage() {
     setSubmitting(true)
     setError('')
     try {
-      if (isRegister && role !== 'student') {
-        throw new Error('管理端和咨询师端账号由管理员创建。')
-      }
       const user = isRegister
         ? await register(username.trim(), password, nickname.trim())
-        : await login(username.trim(), password, role)
-      if (user.role !== role) {
-        logout()
-        throw new Error('账号与所选身份不匹配，请切换到正确的入口。')
-      }
+        : await login(username.trim(), password)
       navigate(roleHome(user.role), { replace: true })
     } catch (caught) {
       setError(getErrorMessage(caught))
@@ -75,7 +65,7 @@ export function AuthPage() {
 
   return (
     <main className="auth-page">
-      <section className="auth-visual" aria-label={`${roleMeta.label}入口自然影像`}>
+      <section className="auth-visual" aria-label="登录入口自然影像">
         <img className="auth-visual-image" src={roleMeta.image} alt="自然与宠物陪伴的温暖场景" />
         <div className="auth-visual-copy">
           <Link className="wordmark wordmark-light" to="/">
@@ -91,24 +81,9 @@ export function AuthPage() {
 
       <section className="auth-panel" aria-labelledby="auth-heading">
         <div className="auth-panel-inner">
-          <Link className="auth-back" to="/">返回首页</Link>
+          <Link className="auth-back" to="/">← 返回首页</Link>
           <p className="eyebrow">{isRegister ? 'START A GENTLE SPACE' : 'WELCOME BACK'}</p>
           <h2 id="auth-heading">{isRegister ? '把这份陪伴带回身边' : '回到为你留着的位置'}</h2>
-          <p className="auth-intro">当前以 <strong>{roleMeta.label}</strong> 身份{isRegister ? '创建' : '进入'} MindHarbor。</p>
-
-          <div className="role-switch" aria-label="选择登录身份">
-            {roles.map((item) => (
-              <button
-                key={item}
-                className={item === role ? 'is-active' : ''}
-                type="button"
-                aria-pressed={item === role}
-                onClick={() => navigate(getAuthPath(item, mode))}
-              >
-                {getRoleMeta(item).label}
-              </button>
-            ))}
-          </div>
 
           <form className="auth-form" onSubmit={onSubmit}>
             {isRegister && (
@@ -123,11 +98,6 @@ export function AuthPage() {
                   placeholder="希望被怎样称呼"
                 />
               </label>
-            )}
-            {isRegister && role !== 'student' && (
-              <p className="auth-note" role="status">
-                管理端和咨询师端账号由管理员创建，请切换到用户端注册。
-              </p>
             )}
             <label>
               <span>账号</span>
@@ -173,15 +143,15 @@ export function AuthPage() {
             <button
               className="button button-primary auth-submit"
               type="submit"
-              disabled={submitting || (isRegister && role !== 'student')}
+              disabled={submitting}
             >
-              {submitting ? '正在连接...' : isRegister ? `创建${roleMeta.label}账号` : `以${roleMeta.label}身份登录`}
+              {submitting ? '正在连接...' : isRegister ? '创建用户账号' : '登录'}
             </button>
           </form>
 
           <p className="auth-mode-link">
             {isRegister ? '已经有账号？' : '第一次来到这里？'}
-            <Link to={getAuthPath(role, alternateMode)}>{isRegister ? '去登录' : '创建账号'}</Link>
+            <Link to={`/auth/${isRegister ? 'login' : 'register'}`}>{isRegister ? '去登录' : '创建账号'}</Link>
           </p>
         </div>
       </section>
