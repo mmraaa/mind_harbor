@@ -99,6 +99,7 @@ def _stats(db: Session, user_id: int, session_id: int, question: str, **kwargs) 
     return {
         "type": "emotion_stats",
         "question": question,
+        "sql_statement": sql,
         "rows": rows,
         "row_count": len(rows),
         "explanation": explanation,
