@@ -18,6 +18,15 @@ SERVICE_META = {
     "llm": ("对话模型", "llm_api_key", "llm_base_url", "llm_model"),
     "embedding": ("向量模型", "embedding_api_key", "embedding_base_url", "embedding_model"),
     "tts": ("语音陪伴", "tts_api_key", "tts_base_url", "tts_model"),
+    "doodle_review": ("画作审核", "doodle_review_api_key", "doodle_review_base_url", "doodle_review_model"),
+}
+
+# 管理端首次初始化用的可运行默认值；管理员仍可在页面中调整。
+SERVICE_DEFAULTS = {
+    "llm": {"context_window": 131072, "max_tokens": 4096, "timeout_seconds": 120, "token_budget": 1_000_000},
+    "embedding": {"context_window": 8192, "max_tokens": 2048, "timeout_seconds": 60, "token_budget": 1_000_000},
+    "tts": {"context_window": 8192, "max_tokens": 2048, "timeout_seconds": 120, "token_budget": 1_000_000},
+    "doodle_review": {"context_window": 32768, "max_tokens": 4096, "timeout_seconds": 180, "token_budget": 1_000_000},
 }
 
 
@@ -66,6 +75,7 @@ def mask_secret(value: str | None) -> str | None:
 def _env_service(service_id: str) -> ResolvedService:
     settings = get_settings()
     label, key_name, url_name, model_name = SERVICE_META[service_id]
+    defaults = SERVICE_DEFAULTS[service_id]
     return ResolvedService(
         service_id=service_id,
         label=label,
@@ -73,6 +83,10 @@ def _env_service(service_id: str) -> ResolvedService:
         api_key=getattr(settings, key_name) or "",
         base_url=getattr(settings, url_name) or "",
         model=getattr(settings, model_name) or "",
+        timeout_seconds=defaults["timeout_seconds"],
+        max_tokens=defaults["max_tokens"],
+        context_window=defaults["context_window"],
+        token_budget=defaults["token_budget"],
     )
 
 
@@ -122,18 +136,36 @@ def resolve_service(service_id: str) -> ResolvedService:
 
 
 def ensure_rows(db: Session) -> None:
-    """为既有数据库补建表和默认配置行，不覆盖环境变量中的密钥。"""
+    """补建配置表和配置行，并只填充既有行中缺失的环境配置。"""
     ApiServiceConfig.__table__.create(db.get_bind(), checkfirst=True)
     settings = get_settings()
     for service_id, (label, key_name, url_name, model_name) in SERVICE_META.items():
-        if db.get(ApiServiceConfig, service_id) is None:
+        defaults = SERVICE_DEFAULTS[service_id]
+        row = db.get(ApiServiceConfig, service_id)
+        if row is None:
             db.add(ApiServiceConfig(
                 service_id=service_id,
                 label=label,
                 base_url=getattr(settings, url_name) or None,
                 model=getattr(settings, model_name) or None,
                 api_key_encrypted=encrypt_secret(getattr(settings, key_name)) if getattr(settings, key_name) else None,
+                **defaults,
             ))
+            continue
+
+        # 保留管理员已经填写的值，只对空字段做一次性补齐。
+        env_key = getattr(settings, key_name) or ""
+        if not decrypt_secret(row.api_key_encrypted) and env_key:
+            row.api_key_encrypted = encrypt_secret(env_key)
+        if not row.base_url and getattr(settings, url_name):
+            row.base_url = getattr(settings, url_name)
+        if not row.model and getattr(settings, model_name):
+            row.model = getattr(settings, model_name)
+        for field, default in defaults.items():
+            current = getattr(row, field, None)
+            # 画作审核至少需要完整、按文字展开的陪伴回应输出空间；旧版本曾写入 512。
+            if current is None or (service_id == "doodle_review" and field == "max_tokens" and current < default):
+                setattr(row, field, default)
     db.commit()
 
 

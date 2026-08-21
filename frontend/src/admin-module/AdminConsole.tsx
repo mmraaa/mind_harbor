@@ -23,7 +23,6 @@ import type {
   ResourcePayload,
   Student,
   AdminOverview,
-  AdminApiStatus,
   AdminApiConfig,
   AdminApiConfigUpdate,
 } from './adminTypes'
@@ -72,16 +71,47 @@ function ApiConfigForm({ initial, onCancel, onSaved }: { initial: AdminApiConfig
     if (form.fallback_api_key.trim()) payload.fallback!.api_key = form.fallback_api_key.trim()
     try { await adminApi.updateApiConfig(initial.service_id, payload); setForm((current) => ({ ...current, api_key: '', fallback_api_key: '' })); await onSaved() } catch (caught) { setTestResult(getErrorMessage(caught)) } finally { setSaving(false) }
   }
-  async function testConnection() { setTesting(true); setTestResult('正在测试…'); try { const result = await adminApi.testApiConfig(initial.service_id); setTestResult(result.status === 'reachable' ? '连接可达' : '无法连接') } catch (caught) { setTestResult(getErrorMessage(caught)) } finally { setTesting(false) } }
+  async function testConnection() { setTesting(true); setTestResult('正在测试…'); try { const result = await adminApi.testApiConfig(initial.service_id); setTestResult(result.status === 'reachable' ? '连接可达，鉴权通过' : result.status === 'invalid' ? '地址可达，但鉴权或接口无效' : '无法连接，请检查地址与网络') } catch (caught) { setTestResult(getErrorMessage(caught)) } finally { setTesting(false) } }
   return <form className="admin-form" onSubmit={(event) => void submit(event)}><div className="admin-form__grid"><label className="admin-toggle"><input type="checkbox" checked={form.enabled} onChange={(event) => set('enabled', event.target.checked)} /><span>启用此服务</span></label><label><span>模型</span><input className="text-input" value={form.model} onChange={(event) => set('model', event.target.value)} required /></label><label className="admin-form__wide"><span>基础 URL</span><input className="text-input" type="url" value={form.base_url} onChange={(event) => set('base_url', event.target.value)} required /></label><label><span>API Key（留空保持原值）</span><input className="text-input" type="password" autoComplete="new-password" value={form.api_key} onChange={(event) => set('api_key', event.target.value)} placeholder={initial.api_key_masked ?? '未配置'} /></label><label><span>上下文窗口</span><input className="text-input" type="number" min={256} value={form.context_window} onChange={(event) => set('context_window', event.target.value)} /></label><label><span>最大输出 Token</span><input className="text-input" type="number" min={1} value={form.max_tokens} onChange={(event) => set('max_tokens', event.target.value)} /></label><label><span>超时（秒）</span><input className="text-input" type="number" min={1} max={600} value={form.timeout_seconds} onChange={(event) => set('timeout_seconds', event.target.value)} /></label><label><span>Token 预算</span><input className="text-input" type="number" min={0} value={form.token_budget} onChange={(event) => set('token_budget', event.target.value)} /></label></div><div className="admin-usage-summary"><span>已用 {initial.usage.total_tokens.toLocaleString()} Token</span><span>请求 {initial.usage.request_count} 次</span><span>失败 {initial.usage.failure_count} 次</span><span>{initial.usage.remaining_tokens === null ? '未设预算' : `剩余 ${initial.usage.remaining_tokens.toLocaleString()}`}</span></div><div className="admin-fallback-box"><label className="admin-toggle"><input type="checkbox" checked={form.fallback_enabled} onChange={(event) => set('fallback_enabled', event.target.checked)} /><span>启用备用 API</span></label>{form.fallback_enabled && <div className="admin-form__grid"><label className="admin-form__wide"><span>备用基础 URL</span><input className="text-input" type="url" value={form.fallback_base_url} onChange={(event) => set('fallback_base_url', event.target.value)} required /></label><label><span>备用模型</span><input className="text-input" value={form.fallback_model} onChange={(event) => set('fallback_model', event.target.value)} required /></label><label><span>备用 API Key（留空保持原值）</span><input className="text-input" type="password" autoComplete="new-password" value={form.fallback_api_key} onChange={(event) => set('fallback_api_key', event.target.value)} placeholder={initial.fallback.api_key_masked ?? '未配置'} /></label></div>}</div>{testResult && <div className="admin-test-result" role="status">{testResult}</div>}<div className="admin-dialog__actions"><button type="button" className="ghost-button" onClick={onCancel}>取消</button><button type="button" className="ghost-button" onClick={() => void testConnection()} disabled={testing}>{testing ? '测试中…' : '测试连接'}</button><button type="submit" className="primary-button" disabled={saving}>{saving ? '保存中…' : '保存配置'}</button></div></form>
 }
 
 export function AdminOverviewPage() {
-  const [overview, setOverview] = useState<AdminOverview | null>(null); const [apiStatus, setApiStatus] = useState<AdminApiStatus | null>(null); const [apiConfigs, setApiConfigs] = useState<AdminApiConfig[]>([]); const [editingApi, setEditingApi] = useState<AdminApiConfig | undefined>(); const [error, setError] = useState(''); const [loading, setLoading] = useState(true)
-  async function load() { setLoading(true); setError(''); try { const [summary, services, configs] = await Promise.all([adminApi.getOverview(), adminApi.getApiStatus(), adminApi.listApiConfigs()]); setOverview(summary); setApiStatus(services); setApiConfigs(configs) } catch (caught) { setError(getErrorMessage(caught)) } finally { setLoading(false) } }
+  const [overview, setOverview] = useState<AdminOverview | null>(null)
+  const [apiConfigs, setApiConfigs] = useState<AdminApiConfig[]>([])
+  const [editingApi, setEditingApi] = useState<AdminApiConfig | undefined>()
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  async function load() {
+    setLoading(true)
+    setError('')
+    try {
+      const [summary, configs] = await Promise.all([adminApi.getOverview(), adminApi.listApiConfigs()])
+      setOverview(summary)
+      setApiConfigs(configs)
+    } catch (caught) {
+      setError(getErrorMessage(caught))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => { void load() }, [])
-  const statusLabel = (status: AdminApiStatus['lan_sync']['status']) => ({ reachable: '已连通', configured: '已配置', disabled: '未启用' })[status]
-  return <div className="admin-console"><AdminPageHeader eyebrow="ADMIN / OVERVIEW" title="运营总览" description="查看平台运营状态，个人心理内容仍由咨询师端负责。" count={overview?.resources ?? 0} /><AdminBoundary>这里只显示聚合运营数据，不包含学生日记、消息、情绪趋势或心理档案。</AdminBoundary>{loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : overview && <><section className="admin-overview-grid">{[{ label: '学生账号', value: overview.students, hint: '已注册学生' }, { label: '咨询师', value: overview.counselors, hint: '服务团队成员' }, { label: '心理资源', value: overview.resources, hint: `${overview.active_resources} 条已上架` }, { label: '停用账号', value: overview.disabled_accounts, hint: `${overview.enabled_accounts} 条账号可用` }].map((card) => <article className="admin-overview-card" key={card.label}><span className="admin-overview-card__label">{card.label}</span><strong>{card.value}</strong><small>{card.hint}</small></article>)}</section><section className="admin-api-panel"><div className="admin-table-panel__head"><div><p className="admin-kicker">API CONTROL</p><h2>API 服务管理</h2><span className="admin-muted">密钥仅显示掩码；保存后由服务端加密保管</span></div><button type="button" className="ghost-button" onClick={() => void load()}>刷新状态</button></div><div className="admin-api-list">{apiConfigs.map((service) => <article className="admin-api-row" key={service.service_id}><div><strong>{service.label}</strong><small>{service.model || '未设置模型'} · {service.api_key_configured ? service.api_key_masked : '未配置密钥'}</small></div><div className="admin-api-meta"><span className={`admin-status ${service.enabled ? 'admin-status--on' : 'admin-status--off'}`}>{service.enabled ? '已启用' : '已停用'}</span><small>{service.usage.total_tokens.toLocaleString()} Token · 失败 {service.usage.failure_count} 次</small><button type="button" className="ghost-button admin-action" onClick={() => setEditingApi(service)}><Edit3 size={15} aria-hidden />配置</button></div></article>)}{apiStatus && <article className="admin-api-row admin-api-row--sync"><div><strong>局域网数据库同步</strong><small>{apiStatus.lan_sync.database || '未配置数据库'}</small></div><div className="admin-api-meta"><span className={`admin-status admin-status--${apiStatus.lan_sync.status === 'configured' ? 'on' : 'off'}`}>{statusLabel(apiStatus.lan_sync.status)}</span><small>{apiStatus.lan_sync.host || '未启用镜像写入'}</small></div></article>}</div></section>{editingApi && <AdminDialog title={`配置${editingApi.label}`} onClose={() => setEditingApi(undefined)}><ApiConfigForm initial={editingApi} onCancel={() => setEditingApi(undefined)} onSaved={async () => { setEditingApi(undefined); await load() }} /></AdminDialog>}</>}</div>
+
+  return <div className="admin-console">
+    <AdminPageHeader eyebrow="ADMIN / OVERVIEW" title="运营总览" description="查看平台运营状态，个人心理内容仍由咨询师端负责。" count={overview?.resources ?? 0} />
+    <AdminBoundary>这里只显示聚合运营数据，不包含学生日记、消息、情绪趋势或心理档案。</AdminBoundary>
+    {loading ? <LoadingState /> : error ? <ErrorState message={error} onRetry={() => void load()} /> : overview && <>
+      <section className="admin-overview-grid">
+        {[{ label: '学生账号', value: overview.students, hint: '已注册学生' }, { label: '咨询师', value: overview.counselors, hint: '服务团队成员' }, { label: '心理资源', value: overview.resources, hint: `${overview.active_resources} 条已上架` }, { label: '停用账号', value: overview.disabled_accounts, hint: `${overview.enabled_accounts} 条账号可用` }].map((card) => <article className="admin-overview-card" key={card.label}><span className="admin-overview-card__label">{card.label}</span><strong>{card.value}</strong><small>{card.hint}</small></article>)}
+      </section>
+      <section className="admin-api-panel">
+        <div className="admin-table-panel__head"><div><p className="admin-kicker">API CONTROL</p><h2>API 服务管理</h2><span className="admin-muted">密钥仅显示掩码；保存后由服务端加密保管</span></div><button type="button" className="ghost-button" onClick={() => void load()}>刷新状态</button></div>
+        <div className="admin-api-list">{apiConfigs.map((service) => <article className="admin-api-row" key={service.service_id}><div><strong>{service.label}</strong><small>{service.model || '未设置模型'} · {service.api_key_configured ? service.api_key_masked : '未配置密钥'}</small></div><div className="admin-api-meta"><span className={`admin-status ${service.enabled ? 'admin-status--on' : 'admin-status--off'}`}>{service.enabled ? '已启用' : '已停用'}</span><small>{service.usage.total_tokens.toLocaleString()} Token · 失败 {service.usage.failure_count} 次</small><button type="button" className="ghost-button admin-action" onClick={() => setEditingApi(service)}><Edit3 size={15} aria-hidden />配置</button></div></article>)}</div>
+      </section>
+      {editingApi && <AdminDialog title={`配置${editingApi.label}`} onClose={() => setEditingApi(undefined)}><ApiConfigForm initial={editingApi} onCancel={() => setEditingApi(undefined)} onSaved={async () => { setEditingApi(undefined); await load() }} /></AdminDialog>}
+    </>}
+  </div>
 }
 
 function CounselorForm({ initial, onSubmit, onCancel, saving }: { initial?: Counselor; onSubmit: (payload: CounselorCreatePayload | CounselorUpdatePayload) => Promise<void>; onCancel: () => void; saving: boolean }) {

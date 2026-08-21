@@ -3,6 +3,7 @@ import { BreathingPractice } from '../../components/BreathingPractice'
 import { SleepRelaxation } from '../../components/exercises/SleepRelaxation'
 import { Grounding54321 } from '../../components/exercises/Grounding54321'
 import { SchulteGrid } from '../../components/exercises/SchulteGrid'
+import { DoodleRelaxation } from '../../components/exercises/DoodleRelaxation'
 import { PracticeCatalog } from '../../components/practice/PracticeCatalog'
 import { PracticeModalShell } from '../../components/practice/PracticeModalShell'
 import { PRACTICE_CATALOG, type PracticeId } from '../../data/practiceCatalog'
@@ -23,6 +24,9 @@ function ExerciseModal({ exerciseId, onClose }: { exerciseId: PracticeId; onClos
       break
     case 'schulte':
       content = <SchulteGrid />
+      break
+    case 'doodle':
+      content = <DoodleRelaxation />
       break
   }
 

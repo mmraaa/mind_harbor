@@ -71,7 +71,7 @@ export type AdminOverview = {
 export type AdminApiService = {
   id: string
   label: string
-  status: 'reachable' | 'configured' | 'disabled'
+  status: 'reachable' | 'configured' | 'invalid' | 'disabled'
   model: string | null
   base_url: string | null
 }
@@ -79,7 +79,7 @@ export type AdminApiService = {
 export type AdminApiStatus = {
   services: AdminApiService[]
   lan_sync: {
-    status: 'reachable' | 'configured' | 'disabled'
+    status: 'reachable' | 'configured' | 'invalid' | 'disabled'
     host: string | null
     database: string | null
   }

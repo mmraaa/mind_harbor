@@ -33,8 +33,8 @@ export const adminApi = {
     const { data } = await api.patch<AdminApiConfig>(`/admin/api-configs/${serviceId}`, payload)
     return data
   },
-  async testApiConfig(serviceId: string): Promise<{ service_id: string; status: 'reachable' | 'unreachable' }> {
-    const { data } = await api.post<{ service_id: string; status: 'reachable' | 'unreachable' }>(`/admin/api-configs/${serviceId}/test`)
+  async testApiConfig(serviceId: string): Promise<{ service_id: string; status: 'reachable' | 'invalid' | 'unreachable' }> {
+    const { data } = await api.post<{ service_id: string; status: 'reachable' | 'invalid' | 'unreachable' }>(`/admin/api-configs/${serviceId}/test`)
     return data
   },
   async listCounselors(keyword = ''): Promise<Collection<Counselor>> {

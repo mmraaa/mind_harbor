@@ -849,7 +849,8 @@
 }
 
 .practice-modal__panel--panel {
-  width: min(720px, 100%);
+  width: min(1080px, calc(100vw - 32px));
+  max-height: min(94vh, 960px);
 }
 
 .practice-modal__head {
@@ -1105,6 +1106,55 @@
   margin-top: auto;
   padding-top: 8px;
 }
+
+/* —— Doodle relaxation practice —— */
+.doodle-relaxation { display: grid; gap: 12px; padding: 8px 10px 18px; }
+.doodle-relaxation__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: .78rem; }
+.doodle-relaxation__heading > div { display: inline-flex; align-items: center; gap: 7px; color: var(--sage-dark); }
+.doodle-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,253,248,.9); }
+.doodle-toolbar button { display: inline-flex; align-items: center; gap: 5px; min-height: 34px; padding: 6px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--ink-soft); cursor: pointer; }
+.doodle-toolbar button:hover, .doodle-toolbar button.is-active { border-color: rgba(95,122,103,.35); background: var(--sage-pale); color: var(--sage-dark); }
+.doodle-toolbar button:disabled { opacity: .38; cursor: not-allowed; }
+.doodle-colors { display: inline-flex; gap: 5px; margin-left: auto; }
+.doodle-colors button { width: 22px; min-height: 22px; padding: 0; border: 2px solid transparent; border-radius: 50%; }
+.doodle-colors button.is-active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--canvas); }
+.doodle-width { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: .72rem; }
+.doodle-width input { width: 76px; accent-color: var(--sage-dark); }
+.doodle-canvas-frame { overflow: hidden; min-height: 220px; border: 1px solid rgba(210,197,179,.8); border-radius: 15px; background: var(--canvas); box-shadow: inset 0 0 0 8px rgba(255,250,240,.45); touch-action: none; }
+.doodle-canvas-frame canvas { display: block; width: 100%; min-height: 220px; cursor: crosshair; touch-action: none; }
+.doodle-canvas-frame--eraser canvas { cursor: cell; }
+.doodle-history { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,253,248,.76); }
+.doodle-history__heading { display: flex; justify-content: space-between; gap: 10px; color: var(--sage-dark); font-size: .8rem; }
+.doodle-history__heading span { color: var(--muted); font-size: .72rem; }
+.doodle-history__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(116px, 1fr)); gap: 8px; }
+.doodle-history__item { overflow: hidden; border: 1px solid rgba(210,197,179,.72); border-radius: 9px; background: var(--canvas); }
+.doodle-history__item img { display: block; width: 100%; aspect-ratio: 1.42; object-fit: cover; border-bottom: 1px solid rgba(210,197,179,.72); }
+.doodle-history__item > div { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 4px; padding: 6px; }
+.doodle-history__item small { overflow: hidden; color: var(--muted); font-size: .65rem; text-overflow: ellipsis; white-space: nowrap; }
+.doodle-history__item button { padding: 3px 5px; border: 0; border-radius: 4px; background: transparent; color: var(--sage-dark); font-size: .68rem; cursor: pointer; }
+.doodle-history__item button:hover { background: var(--sage-pale); }
+.doodle-review-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: .76rem; }
+.doodle-review-row .primary-button { display: inline-flex; align-items: center; gap: 6px; }
+.doodle-error { margin: 0; padding: 9px 11px; border-radius: 10px; background: rgba(180,95,80,.1); color: #9b4d42; font-size: .82rem; }
+.doodle-analysis { display: grid; gap: 11px; min-height: 300px; padding: 20px; border: 1px solid rgba(95,122,103,.28); border-radius: 15px; background: rgba(230,238,231,.46); }
+.doodle-analysis p { margin: 0; color: var(--ink-soft); line-height: 1.65; }
+.doodle-analysis__title { display: flex; align-items: center; gap: 7px; color: var(--sage-dark); }
+.doodle-analysis__title small { margin-left: auto; color: var(--muted); font-size: .7rem; }
+.doodle-analysis__word { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; padding: 9px 12px; border-radius: 10px; background: rgba(255,253,248,.75); color: var(--sage-dark); }
+.doodle-analysis__word span { color: var(--muted); font-size: .75rem; }
+.doodle-analysis__word strong { font-size: .98rem; }
+.doodle-analysis__care { display: grid; gap: 4px; padding: 10px 12px; border-radius: 11px; background: rgba(224, 184, 106, .16); color: var(--ink-soft); line-height: 1.6; }
+.doodle-analysis__care strong { color: var(--sage-dark); font-size: .78rem; }
+.doodle-analysis__care--urgent { background: rgba(180, 95, 80, .12); }
+.doodle-analysis__summary { color: var(--muted) !important; font-size: .83rem; }
+.doodle-analysis__support { display: grid; gap: 8px; min-height: 160px; padding: 17px 18px; border-left: 4px solid var(--sage-dark); border-radius: 0 12px 12px 0; background: rgba(255, 253, 248, .9); }
+.doodle-analysis__support > strong { color: var(--sage-dark); font-size: .78rem; }
+.doodle-analysis__support p { font-size: .96rem; line-height: 1.8; }
+.doodle-analysis__question { display: grid; gap: 5px; padding: 12px 14px; border-radius: 10px; background: rgba(224, 184, 106, .14); color: var(--ink-soft); }
+.doodle-analysis__question span { color: var(--sage-dark); font-size: .76rem; font-weight: 700; }
+.doodle-analysis__question p { font-size: .9rem; line-height: 1.7; }
+.doodle-analysis__notice { padding-top: 8px; border-top: 1px solid rgba(95,122,103,.18); color: var(--muted) !important; font-size: .72rem; }
+@media (max-width: 680px) { .doodle-colors { margin-left: 0; } .doodle-analysis { min-height: 330px; padding: 15px; } .doodle-analysis__support { min-height: 180px; padding: 15px; } .doodle-relaxation__heading { align-items: flex-start; flex-direction: column; } }
 
 /* —— Guided exercise content (sleep / grounding) —— */
 .guided-exercise-content {

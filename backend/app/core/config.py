@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # 团队后端身份回查地址：仅随手画本机路由在 JWT 密钥不一致时使用。
+    team_backend_base_url: str = ""
+
     # CORS(团队开发环境放开所有来源,生产请收紧为白名单)
     cors_origins: list[str] = ["*"]
 
@@ -59,6 +62,11 @@ class Settings(BaseSettings):
     tts_base_url: str = ""
     tts_model: str = ""
     tts_voice: str = ""
+
+    # 随手画 AI 审核(管理员 API 配置表优先;环境变量只作首次初始化 fallback)
+    doodle_review_api_key: str = ""
+    doodle_review_base_url: str = ""
+    doodle_review_model: str = ""
 
     @property
     def sync_database_url(self) -> str:

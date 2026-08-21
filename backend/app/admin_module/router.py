@@ -141,6 +141,15 @@ def list_api_configs(db: Session = Depends(get_db)) -> dict:
     return {"services": [_api_config_payload(row) for row in rows]}
 
 
+def _connection_status(status_code: int) -> str:
+    """把供应商探测结果转换为管理端可读状态。"""
+    if 200 <= status_code < 400:
+        return "reachable"
+    if 400 <= status_code < 500:
+        return "invalid"
+    return "unreachable"
+
+
 @router.patch("/api-configs/{service_id}")
 def update_api_config(
     service_id: str,
@@ -177,7 +186,7 @@ def update_api_config(
 
 @router.post("/api-configs/{service_id}/test")
 def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
-    """轻量探测已保存端点可达性，不发送模型内容也不回显连接密钥。"""
+    """用供应商的轻量模型列表接口验证地址和鉴权，不发送用户内容。"""
     if service_id not in SERVICE_META:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "API 服务不存在")
     ensure_rows(db)
@@ -188,8 +197,12 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
     if not api_key:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "请先配置 API Key")
     try:
+        probe_url = row.base_url.rstrip("/")
+        # OpenAI 兼容服务公开 /models；画作审核端点不是兼容 API，根路径只做网络探测。
+        if service_id != "doodle_review":
+            probe_url += "/models"
         response = httpx.get(
-            row.base_url.rstrip("/"),
+            probe_url,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=min(max(row.timeout_seconds, 1), 10),
             trust_env=False,
@@ -198,8 +211,7 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
         return {"service_id": service_id, "status": "unreachable"}
     return {
         "service_id": service_id,
-        # 4xx（例如根路径 404/401）也说明服务端网络可达。
-        "status": "reachable" if response.status_code < 600 else "unreachable",
+        "status": _connection_status(response.status_code),
     }
 
 

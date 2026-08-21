@@ -1,6 +1,6 @@
-import { Grid3X3, MapPin, MoonStar, Wind, type LucideIcon } from 'lucide-react'
+import { Grid3X3, MapPin, MoonStar, Palette, Wind, type LucideIcon } from 'lucide-react'
 
-export type PracticeId = 'breathing' | 'sleep' | 'grounding' | 'schulte'
+export type PracticeId = 'breathing' | 'sleep' | 'grounding' | 'schulte' | 'doodle'
 export type PracticeCategory = 'breath' | 'sleep' | 'grounding' | 'focus'
 export type PracticeTone = 'sage' | 'clay' | 'night'
 export type PracticeModalLayout = 'immersive' | 'guided' | 'panel'
@@ -77,6 +77,20 @@ export const PRACTICE_CATALOG: PracticeMeta[] = [
     tone: 'sage',
     category: 'focus',
     icon: Grid3X3,
+    modalLayout: 'panel',
+  },
+  {
+    id: 'doodle',
+    title: '随手画舒缓',
+    tag: '表达与舒缓',
+    duration: '约 5–10 分钟',
+    durationMinutes: 8,
+    difficulty: '轻',
+    description: '给线条和颜色一点空间，不必画得像什么，也可以主动请求一次温和观察。',
+    bestFor: '思绪拥挤、想换一种方式表达、需要安静下来',
+    tone: 'clay',
+    category: 'grounding',
+    icon: Palette,
     modalLayout: 'panel',
   },
 ]
