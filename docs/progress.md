@@ -32,6 +32,15 @@
 (无)
 
 ## 已完成
+### 2026-08-21 · 撰写《项目开发计划》文档
+
+- **完成内容**:按课程工程文档目录(1 前言 / 2 项目概述 / 3 利益相关人 / 4 已定义过程 / 5 项目监控计划 / 6 测试工具和软件环境)编写开发计划,内容全部对齐真实项目:M1–M8 里程碑与实际进度、三角色职责、TDD/增量生命周期、活动安排 WBS、当前 125 用例全绿基线、遗留待办。
+- **涉及文件**:`docs/2026-08-21-mindharbor-development-plan.md`(新增;参考 `docs/superpowers/plans/2026-08-14-mindharbor-implementation.md`、`docs/superpowers/specs/2026-08-14-mindharbor-design.md`、`docs/progress.md`)
+- **测试结果**:文档任务,无代码改动;数据经与代码/文档核对
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:与规格文档一致——M8 未开始、email/phone 资料字段留后续、api.md 双前缀 bug 待修。
+
 ### 2026-08-20 · 补齐资料修改与修改密码接口(PATCH /auth/me、PUT /auth/password)
 
 - **完成内容**:新增两个接口——`PATCH /api/v1/auth/me` 修改昵称 `name`(`role`/`username` 不可改、显式传入返回 400;`email`/`phone` 为**后续功能**,本轮不提供字段、传入被忽略);`PUT /api/v1/auth/password` 修改密码(校验旧密码,新密码哈希落库;旧 JWT 保持有效,按设计决策不引入黑名单)。`users` 表本轮不加列。
