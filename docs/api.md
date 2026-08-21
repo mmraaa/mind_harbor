@@ -1,6 +1,6 @@
 # MindHarbor API 文档
 
-> 由 `scripts/gen_api_docs.py` / openapi.json 自动生成(共 18 个端点)。
+> 由 `scripts/gen_api_docs.py` 从运行中的后端自动生成(共 32 个端点)。
 > 接口基址:`http://172.16.2.91:8000/api/v1`
 
 ## 鉴权
@@ -18,6 +18,8 @@ Authorization: Bearer <access_token>
 | GET | `/api/v1/api/v1/health` | Health |
 | POST | `/api/v1/api/v1/auth/login` | Login |
 | GET | `/api/v1/api/v1/auth/me` | Me |
+| PATCH | `/api/v1/api/v1/auth/me` | Update Me |
+| PUT | `/api/v1/api/v1/auth/password` | Change Password |
 | POST | `/api/v1/api/v1/auth/register` | Register |
 | GET | `/api/v1/api/v1/chat/sessions` | List Sessions |
 | GET | `/api/v1/api/v1/chat/sessions/{session_id}` | Get Session |
@@ -29,11 +31,27 @@ Authorization: Bearer <access_token>
 | POST | `/api/v1/api/v1/favorites/{message_id}` | Add Favorite |
 | DELETE | `/api/v1/api/v1/favorites/{message_id}` | Remove Favorite |
 | GET | `/api/v1/api/v1/favorites/mine` | My Favorites |
+| GET | `/api/v1/api/v1/reminders/mine` | My Reminders |
+| PATCH | `/api/v1/api/v1/reminders/{reminder_id}/done` | Mark Reminder Done |
 | POST | `/api/v1/api/v1/counselor/chat` | Counselor Chat |
 | GET | `/api/v1/api/v1/counselor/stats/emotion-distribution` | Emotion Distribution |
 | GET | `/api/v1/api/v1/counselor/stats/students` | Students |
 | GET | `/api/v1/api/v1/counselor/stats/students/{student_id}/detail` | Student Detail |
 | GET | `/api/v1/api/v1/counselor/stats/sessions/{session_id}/messages` | Session Messages |
+| GET | `/api/v1/api/v1/admin/overview` | Admin Overview |
+| GET | `/api/v1/api/v1/admin/api-status` | Admin Api Status |
+| GET | `/api/v1/api/v1/admin/api-configs` | List Api Configs |
+| PATCH | `/api/v1/api/v1/admin/api-configs/{service_id}` | Update Api Config |
+| POST | `/api/v1/api/v1/admin/api-configs/{service_id}/test` | Test Api Config |
+| GET | `/api/v1/api/v1/admin/counselors` | List Counselors |
+| POST | `/api/v1/api/v1/admin/counselors` | Create Counselor |
+| PATCH | `/api/v1/api/v1/admin/counselors/{user_id}` | Update Counselor |
+| GET | `/api/v1/api/v1/admin/students` | List Students |
+| PATCH | `/api/v1/api/v1/admin/students/{user_id}` | Update Student |
+| GET | `/api/v1/api/v1/admin/resources` | List Resources |
+| POST | `/api/v1/api/v1/admin/resources` | Create Resource |
+| DELETE | `/api/v1/api/v1/admin/resources/{resource_id}` | Delete Resource |
+| PATCH | `/api/v1/api/v1/admin/resources/{resource_id}` | Update Resource |
 
 ## GET `/api/v1/api/v1/health`
 
@@ -67,6 +85,33 @@ Authorization: Bearer <access_token>
   - `username`* (string)
   - `name`* (string)
   - `role`* (string)
+
+## PATCH `/api/v1/api/v1/auth/me`
+
+**说明**:Update Me
+
+**请求体**:
+
+  - `name` (object) 昵称 1-64 字符
+
+**响应**:`Successful Response`
+
+  - `id`* (integer)
+  - `username`* (string)
+  - `name`* (string)
+  - `role`* (string)
+
+## PUT `/api/v1/api/v1/auth/password`
+
+**说明**:Change Password
+
+**请求体**:
+
+  - `old_password`* (string)
+  - `new_password`* (string)
+
+**响应**:`Successful Response`
+
 
 ## POST `/api/v1/api/v1/auth/register`
 
@@ -159,6 +204,20 @@ Authorization: Bearer <access_token>
 **响应**:`Successful Response`
 
 
+## GET `/api/v1/api/v1/reminders/mine`
+
+**说明**:My Reminders
+
+**响应**:`Successful Response`
+
+
+## PATCH `/api/v1/api/v1/reminders/{reminder_id}/done`
+
+**说明**:Mark Reminder Done
+
+**响应**:`Successful Response`
+
+
 ## POST `/api/v1/api/v1/counselor/chat`
 
 **说明**:Counselor Chat
@@ -195,6 +254,155 @@ Authorization: Bearer <access_token>
 ## GET `/api/v1/api/v1/counselor/stats/sessions/{session_id}/messages`
 
 **说明**:Session Messages
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/admin/overview`
+
+**说明**:Admin Overview
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/admin/api-status`
+
+**说明**:Admin Api Status
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/admin/api-configs`
+
+**说明**:List Api Configs
+
+**响应**:`Successful Response`
+
+
+## PATCH `/api/v1/api/v1/admin/api-configs/{service_id}`
+
+**说明**:Update Api Config
+
+**请求体**:
+
+  - `enabled` (object)
+  - `base_url` (object)
+  - `model` (object)
+  - `api_key` (object)
+  - `context_window` (object)
+  - `max_tokens` (object)
+  - `timeout_seconds` (object)
+  - `token_budget` (object)
+  - `fallback` (object)
+
+**响应**:`Successful Response`
+
+
+## POST `/api/v1/api/v1/admin/api-configs/{service_id}/test`
+
+**说明**:Test Api Config
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/admin/counselors`
+
+**说明**:List Counselors
+
+**响应**:`Successful Response`
+
+
+## POST `/api/v1/api/v1/admin/counselors`
+
+**说明**:Create Counselor
+
+**请求体**:
+
+  - `username`* (string)
+  - `password`* (string)
+  - `name`* (string)
+  - `title` (string)
+  - `specialty` (string)
+  - `bio` (string)
+  - `availability` (string)
+
+**响应**:`200`
+
+## PATCH `/api/v1/api/v1/admin/counselors/{user_id}`
+
+**说明**:Update Counselor
+
+**请求体**:
+
+  - `name` (object)
+  - `password` (object)
+  - `title` (object)
+  - `specialty` (object)
+  - `bio` (object)
+  - `availability` (object)
+  - `is_enabled` (object)
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/admin/students`
+
+**说明**:List Students
+
+**响应**:`Successful Response`
+
+
+## PATCH `/api/v1/api/v1/admin/students/{user_id}`
+
+**说明**:Update Student
+
+**请求体**:
+
+  - `name` (object)
+  - `risk_tags` (object)
+  - `is_enabled` (object)
+
+**响应**:`Successful Response`
+
+
+## GET `/api/v1/api/v1/admin/resources`
+
+**说明**:List Resources
+
+**响应**:`Successful Response`
+
+
+## POST `/api/v1/api/v1/admin/resources`
+
+**说明**:Create Resource
+
+**请求体**:
+
+  - `title`* (string)
+  - `type` (string)
+  - `content` (string)
+  - `url` (object)
+  - `is_active` (boolean)
+
+**响应**:`200`
+
+## DELETE `/api/v1/api/v1/admin/resources/{resource_id}`
+
+**说明**:Delete Resource
+
+**响应**:`200`
+
+## PATCH `/api/v1/api/v1/admin/resources/{resource_id}`
+
+**说明**:Update Resource
+
+**请求体**:
+
+  - `title` (object)
+  - `type` (object)
+  - `content` (object)
+  - `url` (object)
+  - `is_active` (object)
 
 **响应**:`Successful Response`
 

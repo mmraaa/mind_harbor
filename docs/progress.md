@@ -32,7 +32,25 @@
 (无)
 
 ## 已完成
-### 2026-08-19 · 情绪日记 ↔ 会话关联(从日记跳转到会话)
+### 2026-08-20 · 补齐资料修改与修改密码接口(PATCH /auth/me、PUT /auth/password)
+
+- **完成内容**:新增两个接口——`PATCH /api/v1/auth/me` 修改昵称 `name`(`role`/`username` 不可改、显式传入返回 400;`email`/`phone` 为**后续功能**,本轮不提供字段、传入被忽略);`PUT /api/v1/auth/password` 修改密码(校验旧密码,新密码哈希落库;旧 JWT 保持有效,按设计决策不引入黑名单)。`users` 表本轮不加列。
+- **涉及文件/接口**:`backend/app/api/auth.py`、`backend/app/schemas/user.py`(ProfileUpdate/PasswordChange)、`backend/tests/test_auth.py`;文档 `docs/api.md`/`docs/openapi.json`(重新生成,32 paths)、`docs/2026-08-20-mindharbor-course-spec.md`(§3.1.1/§3.2.2/§5.2)
+- **测试结果(TDD)**:先写 11 个失败测试确认 RED(路由缺失 405/404);按用户新需求(仅 name)调整测试后再次 RED(断言 UserOut 不再含 email/phone)→ 实现 → **全量 `pytest` 125 passed 全绿(约 2 分钟)**。
+- **顺带修复(既有问题,非 auth 引入)**:① `generate_breathing` 模板缺失 `box`(schema 声明 enum 有 box 但实现只有 478,既有雷区)→ 补模板全量转绿;② conftest `engine` fixture 不 `dispose()` 致全量连接池耗尽(connection fail)→ teardown 补 dispose;③ `test_rag.py::test_embed_calls_openai_compatible_endpoint` 未 mock `resolve_service`,而 `app/services/api_config.resolve_service` 会用 `SessionLocal()` 读**开发库** `admin_api_service_configs`(测试库隔离只禁 sync,没隔离此路径;开发库该行配置使 key 为空)→ 按其他 LLM 测试范式注入确定 `ResolvedService`。
+- **经验**:并发跑两个 pytest 进同一测试库会互踩(drop/create 竞争 → UniqueViolation/挂起),必须串行;"远程库锁影响"旧表述不准确——测试只连本机 PG,瞬态失败来自连接池/顺序,均已查明修复。
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:① `docs/api.md` 的 `/api/v1/api/v1/` 双前缀为生成脚本既有 bug(不在本次范围);② `api_config.resolve_service` 读开发库配置,在测试中依赖 mock 注入(已修该测试,其他调用方仍走开发库——生产行为正确,仅测试隔离需留意);③ email/phone 资料字段留待后续功能实现。
+
+### 2026-08-20 · 课程规格说明书(对标「AI 面试官」模板改写)
+
+- **完成内容**:按《AI 面试官课程项目规格说明书》的结构(账号与权限 / 数据管理 / 主流程 / 性能 / 接口)撰写 MindHarbor 版规格文档:5 节对应「聊天→情绪识别→风险筛查→记忆→Agent 工具→日记→咨询师趋势」真实闭环;接口清单逐条对照后端路由装饰器核实,功能以「已实现/规划中」标注,避免规格与代码脱节。
+- **涉及文件**:`docs/2026-08-20-mindharbor-course-spec.md`(新增;上游 `docs/superpowers/specs/2026-08-14-mindharbor-design.md`、`docs/api.md`)
+- **测试结果**:无代码改动,未跑测试;文档数据来源:路由装饰器核查(`api/`+`admin_module/`)、`security.py`(bcrypt+JWT)、`deps.py`(require_roles)、`progress.md` 历史记录
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:①`PATCH /auth/me`、`PUT /auth/password` 在模板中有、当前后端未实现,已在文档 §3.1.1/§3.2.2 标注「规划中」;②项目为同步 SSE 编排、无任务队列,§4 已如实写明与模板异步回写方案的区别。
 
 - **完成内容**:在咨询师档案弹窗中，日记详情新增“查看对应会话”按钮；点击后切换到“近期会话”视图并高亮该会话，自动加载会话消息回放。
 - **接口变更**:`GET /counselor/stats/students/{id}/detail` 返回的 `journals[]` 增加 `session_id` 字段，用于把日记关联到对应会话。
