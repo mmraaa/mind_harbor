@@ -33,8 +33,12 @@ export const adminApi = {
     const { data } = await api.patch<AdminApiConfig>(`/admin/api-configs/${serviceId}`, payload)
     return data
   },
-  async testApiConfig(serviceId: string): Promise<{ service_id: string; status: 'reachable' | 'invalid' | 'unreachable' }> {
-    const { data } = await api.post<{ service_id: string; status: 'reachable' | 'invalid' | 'unreachable' }>(`/admin/api-configs/${serviceId}/test`)
+  async testApiConfig(serviceId: string): Promise<{ service_id: string; status: 'reachable' | 'contract' | 'invalid' | 'rate_limited' | 'upstream_error' | 'unreachable' }> {
+    const { data } = await api.post<{ service_id: string; status: 'reachable' | 'contract' | 'invalid' | 'rate_limited' | 'upstream_error' | 'unreachable' }>(`/admin/api-configs/${serviceId}/test`)
+    return data
+  },
+  async validateDoodleApi(): Promise<{ service_id: string; status: 'verified' | 'reachable' | 'invalid' | 'rate_limited' | 'upstream_error' | 'unreachable'; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }> {
+    const { data } = await api.post<{ service_id: string; status: 'verified' | 'reachable' | 'invalid' | 'rate_limited' | 'upstream_error' | 'unreachable'; usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number } }>('/admin/api-configs/doodle_review/validate')
     return data
   },
   async listCounselors(keyword = ''): Promise<Collection<Counselor>> {

@@ -5,6 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.admin_module.models import AccountControl, ApiServiceConfig
 from app.admin_module import sync as sync_module
+from app.adapters.doodle_review import (
+    connection_status,
+    doodle_generation_url,
+    doodle_validation_payload,
+    response_usage_tokens,
+    validation_response_ok,
+)
 from app.admin_module.schemas import (
     ApiServiceConfigUpdate,
     CounselorCreate,
@@ -24,6 +31,7 @@ from app.services.api_config import (
     ensure_rows,
     encrypt_secret,
     mask_secret,
+    record_usage,
 )
 
 router = APIRouter(
@@ -141,13 +149,9 @@ def list_api_configs(db: Session = Depends(get_db)) -> dict:
     return {"services": [_api_config_payload(row) for row in rows]}
 
 
-def _connection_status(status_code: int) -> str:
+def _connection_status(status_code: int, *, contract_probe: bool = False) -> str:
     """把供应商探测结果转换为管理端可读状态。"""
-    if 200 <= status_code < 400:
-        return "reachable"
-    if 400 <= status_code < 500:
-        return "invalid"
-    return "unreachable"
+    return connection_status(status_code, contract_probe=contract_probe)
 
 
 @router.patch("/api-configs/{service_id}")
@@ -186,7 +190,7 @@ def update_api_config(
 
 @router.post("/api-configs/{service_id}/test")
 def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
-    """用供应商的轻量模型列表接口验证地址和鉴权，不发送用户内容。"""
+    """探测服务地址和接口契约，不发送用户内容，也不消耗模型 Token。"""
     if service_id not in SERVICE_META:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "API 服务不存在")
     ensure_rows(db)
@@ -198,20 +202,75 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "请先配置 API Key")
     try:
         probe_url = row.base_url.rstrip("/")
-        # OpenAI 兼容服务公开 /models；画作审核端点不是兼容 API，根路径只做网络探测。
+        # OpenAI 兼容服务公开 /models；画作审核探测真实 DashScope 多模态路径。
         if service_id != "doodle_review":
             probe_url += "/models"
-        response = httpx.get(
-            probe_url,
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=min(max(row.timeout_seconds, 1), 10),
-            trust_env=False,
-        )
+            response = httpx.get(
+                probe_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=min(max(row.timeout_seconds, 1), 10),
+                trust_env=False,
+            )
+        else:
+            probe_url = doodle_generation_url(probe_url)
+            # 不发送图片或 prompt，GET 只验证真实路由；405/422 代表路径存在。
+            response = httpx.get(
+                probe_url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=min(max(row.timeout_seconds, 1), 10),
+                trust_env=False,
+            )
     except httpx.HTTPError:
         return {"service_id": service_id, "status": "unreachable"}
     return {
         "service_id": service_id,
-        "status": _connection_status(response.status_code),
+        "status": _connection_status(response.status_code, contract_probe=service_id == "doodle_review"),
+    }
+
+
+@router.post("/api-configs/{service_id}/validate")
+def validate_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
+    """Run an explicit, minimal inference check for the native doodle-review model."""
+    if service_id != "doodle_review":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "当前仅支持验证画作审核模型")
+    ensure_rows(db)
+    row = db.get(ApiServiceConfig, service_id)
+    if row is None or not row.enabled or not row.base_url or not row.model:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "请先启用并填写基础地址和模型")
+    api_key = decrypt_secret(row.api_key_encrypted)
+    if not api_key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "请先配置 API Key")
+    try:
+        response = httpx.post(
+            doodle_generation_url(row.base_url),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json=doodle_validation_payload(row.model),
+            timeout=min(max(row.timeout_seconds, 1), 30),
+            trust_env=False,
+        )
+    except httpx.HTTPError:
+        return {"service_id": service_id, "status": "unreachable"}
+
+    if not 200 <= response.status_code < 300:
+        record_usage(service_id, failed=True)
+        return {"service_id": service_id, "status": _connection_status(response.status_code)}
+    if not validation_response_ok(response):
+        record_usage(service_id, failed=True)
+        return {"service_id": service_id, "status": "invalid"}
+    prompt_tokens, completion_tokens = response_usage_tokens(response)
+    record_usage(
+        service_id,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
+    return {
+        "service_id": service_id,
+        "status": "verified",
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
     }
 
 

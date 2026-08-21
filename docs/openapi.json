@@ -1286,6 +1286,56 @@
         }
       }
     },
+    "/api/v1/admin/api-configs/{service_id}/validate": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Validate Api Config",
+        "description": "显式验证画作审核模型；仅支持 doodle_review，发送固定 1x1 PNG，可能消耗少量 Token。",
+        "operationId": "validate_api_config_api_v1_admin_api_configs__service_id__validate_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "service_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Service Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Validate Api Config"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/counselors": {
       "get": {
         "tags": [

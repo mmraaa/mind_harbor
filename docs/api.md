@@ -43,6 +43,7 @@ Authorization: Bearer <access_token>
 | GET | `/api/v1/api/v1/admin/api-configs` | List Api Configs |
 | PATCH | `/api/v1/api/v1/admin/api-configs/{service_id}` | Update Api Config |
 | POST | `/api/v1/api/v1/admin/api-configs/{service_id}/test` | Test Api Config |
+| POST | `/api/v1/api/v1/admin/api-configs/{service_id}/validate` | Validate Api Config |
 | GET | `/api/v1/api/v1/admin/counselors` | List Counselors |
 | POST | `/api/v1/api/v1/admin/counselors` | Create Counselor |
 | PATCH | `/api/v1/api/v1/admin/counselors/{user_id}` | Update Counselor |
@@ -303,6 +304,13 @@ Authorization: Bearer <access_token>
 **说明**:Test Api Config
 
 **响应**:`Successful Response`
+
+
+## POST `/api/v1/api/v1/admin/api-configs/{service_id}/validate`
+
+**说明**:显式验证画作审核模型；仅支持 `doodle_review`，发送固定 1x1 PNG，可能消耗少量 Token。
+
+**响应**:`verified` 时返回 `usage.prompt_tokens`、`usage.completion_tokens`、`usage.total_tokens`；失败返回 `invalid` 或 `unreachable`。
 
 
 ## GET `/api/v1/api/v1/admin/counselors`

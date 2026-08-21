@@ -64,6 +64,11 @@ _SELF_HARM_TERMS = ("自杀", "结束自己", "不想活")
 _CRISIS_KNOWLEDGE_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "knowledge" / "随手画危机支持与生命教育.md"
 )
+DOODLE_GENERATION_PATH = "/services/aigc/multimodal-generation/generation"
+_VALIDATION_IMAGE_DATA_URL = (
+    "data:image/png;base64,"
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6eQAAAABJRU5ErkJggg=="
+)
 
 # 这些说明只基于识别到的文字，不把一个字当作用户的意图或诊断。它们既约束
 # 模型回应，也在模型再次输出通用模板时提供最小、可预测的教育性补充。
@@ -305,6 +310,93 @@ def _field(value: Any, name: str, default: Any = None) -> Any:
     return getattr(value, name, default)
 
 
+def _usage_tokens(response: Any) -> tuple[int, int]:
+    """Read token usage from DashScope or OpenAI-compatible response shapes."""
+    payload = response
+    if hasattr(response, "json") and callable(response.json):
+        try:
+            payload = response.json()
+        except (TypeError, ValueError):
+            payload = response
+    usage = _field(payload, "usage", {}) or {}
+    prompt = _field(usage, "prompt_tokens", None)
+    if prompt is None:
+        prompt = _field(usage, "input_tokens", 0)
+    completion = _field(usage, "completion_tokens", None)
+    if completion is None:
+        completion = _field(usage, "output_tokens", 0)
+    try:
+        return max(0, int(prompt or 0)), max(0, int(completion or 0))
+    except (TypeError, ValueError):
+        return 0, 0
+
+
+def response_usage_tokens(response: Any) -> tuple[int, int]:
+    """Public usage parser shared by the administrator's explicit validation action."""
+    return _usage_tokens(response)
+
+
+def validation_response_ok(response: Any) -> bool:
+    """Require a real multimodal output before reporting explicit validation success."""
+    payload = response
+    if hasattr(response, "json") and callable(response.json):
+        try:
+            payload = response.json()
+        except (TypeError, ValueError):
+            return False
+    output = _field(payload, "output", {}) or {}
+    choices = _field(output, "choices", []) or []
+    return bool(choices)
+
+
+def connection_status(status_code: int, *, contract_probe: bool = False) -> str:
+    """Classify a service-specific probe without conflating method mismatch and auth failure."""
+    if contract_probe:
+        if status_code in (401, 403, 404):
+            return "invalid"
+        if status_code == 429:
+            return "rate_limited"
+        if 200 <= status_code < 400 or 400 <= status_code < 500:
+            return "contract"
+    if 200 <= status_code < 400:
+        return "reachable"
+    if status_code == 405:
+        return "contract"
+    if status_code == 429:
+        return "rate_limited"
+    if 400 <= status_code < 500:
+        return "invalid"
+    if status_code >= 500:
+        return "upstream_error"
+    return "unreachable"
+
+
+def doodle_generation_url(base_url: str) -> str:
+    """Build the one native DashScope endpoint used by both probe and inference."""
+    return base_url.rstrip("/") + DOODLE_GENERATION_PATH
+
+
+def doodle_validation_payload(model: str) -> dict[str, Any]:
+    """Build a minimal, non-user-content request for an administrator-approved model check."""
+    return {
+        "model": model,
+        "input": {
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"image": _VALIDATION_IMAGE_DATA_URL},
+                    {"text": "请只回复 ok。"},
+                ],
+            }],
+        },
+        "parameters": {
+            "enable_thinking": False,
+            "temperature": 0,
+            "max_tokens": 32,
+        },
+    }
+
+
 def _response_text(response: Any) -> str:
     if hasattr(response, "json") and callable(response.json) and not _field(response, "output", None):
         try:
@@ -475,7 +567,7 @@ def ensure_word_specific_question(
 def _call_default(config: ResolvedService, image: bytes, media_type: str, prompt: str = OBSERVATION_PROMPT) -> Any:
     encoded = base64.b64encode(image).decode("ascii")
     response = httpx.post(
-        config.base_url.rstrip("/") + "/services/aigc/multimodal-generation/generation",
+        doodle_generation_url(config.base_url),
         headers={
             "Authorization": f"Bearer {config.api_key}",
             "Content-Type": "application/json",
@@ -518,6 +610,8 @@ async def analyze_doodle(
     services = [primary] + ([primary.fallback] if primary.fallback else [])
     invoke = call or _call_default
     last_error: Exception | None = None
+    total_prompt_tokens = 0
+    total_completion_tokens = 0
     for service in services:
         if not service or not service.enabled or not service.api_key or not service.base_url or not service.model:
             continue
@@ -530,6 +624,9 @@ async def analyze_doodle(
                 invoke, service, image, media_type, prompt
             ) if parameter_count >= 4 else asyncio.to_thread(invoke, service, image, media_type)
             response = await invoke_with_prompt(FACTS_PROMPT)
+            facts_prompt_tokens, facts_completion_tokens = _usage_tokens(response)
+            total_prompt_tokens += facts_prompt_tokens
+            total_completion_tokens += facts_completion_tokens
             status = int(_field(response, "status_code", 200) or 200)
             if not 200 <= status < 300:
                 raise DoodleReviewError(f"审核服务 HTTP {status}")
@@ -537,7 +634,11 @@ async def analyze_doodle(
             # 兼容旧的一次调用契约，避免团队后端仍返回旧字段时被破坏。
             if payload.get("observationSummary") and payload.get("gentleClosing"):
                 result = _normalise(payload, service)
-                record_usage(primary.service_id)
+                record_usage(
+                    primary.service_id,
+                    prompt_tokens=total_prompt_tokens,
+                    completion_tokens=total_completion_tokens,
+                )
                 return result
             facts = _normalise_facts(payload, service)
             risk_level = classify_doodle_risk(facts["detectedTexts"])
@@ -554,6 +655,9 @@ async def analyze_doodle(
             support_response = await invoke_with_prompt(
                 SUPPORT_PROMPT + "\n\n系统提供的画面与知识库上下文：\n" + support_context
             )
+            support_prompt_tokens, support_completion_tokens = _usage_tokens(support_response)
+            total_prompt_tokens += support_prompt_tokens
+            total_completion_tokens += support_completion_tokens
             support = _json_object(_response_text(support_response))
             supportive_response, suggested_question = _normalise_support(support)
             supportive_response = ensure_word_specific_response(
@@ -578,9 +682,18 @@ async def analyze_doodle(
                 knowledge_used=bool(citations),
                 citations=citations,
             )
-            record_usage(primary.service_id)
+            record_usage(
+                primary.service_id,
+                prompt_tokens=total_prompt_tokens,
+                completion_tokens=total_completion_tokens,
+            )
             return result
         except Exception as exc:  # noqa: BLE001 - 主服务失败后按配置尝试备用服务
             last_error = exc
-            record_usage(primary.service_id, failed=True)
+    record_usage(
+        primary.service_id,
+        prompt_tokens=total_prompt_tokens,
+        completion_tokens=total_completion_tokens,
+        failed=True,
+    )
     raise DoodleReviewError("画作审核服务暂时不可用") from last_error

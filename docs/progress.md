@@ -32,6 +32,17 @@
 (无)
 
 ## 已完成
+
+### 2026-08-21 · 画作审核连接验证与 Token 统计
+
+- **完成内容**:画作审核管理端测试复用真实 DashScope 多模态路径；区分接口契约可达、鉴权/路径无效、限流和上游异常；新增 `POST /api/v1/admin/api-configs/doodle_review/validate`，使用固定小图片执行明确的模型验证；解析 DashScope/OpenAI 兼容格式的用量字段，并按一次用户请求统计成功/失败。
+- **涉及文件/接口**:`backend/app/adapters/doodle_review.py`、`backend/app/admin_module/router.py`、`frontend/src/admin-module/AdminConsole.tsx`、`frontend/src/admin-module/adminApi.ts`、`backend/.env.example`、`docs/api.md`、`docs/openapi.json`。
+- **测试结果**:后端定向测试 `8 passed`；前端管理 API 测试 `4 passed`；`npx vite build` 通过；`python -m compileall -q backend/app` 通过。全量前端 `npm run build` 仍受仓库既有 `toBeInTheDocument` matcher 类型配置问题阻断，未修改队友认证测试。
+- **提交约束**:本次提交不包含 `.env`、测试代码、`.codex`、`memory.md`、构建产物或临时文件；远端分支已先快进同步队友提交。
+- **commit**:待提交
+- **评审结论**:未评审
+- **遗留问题**:局域网服务器没有可定位的中间文件上传记录，未执行猜路径删除；远程数据库配置由本机忽略的 `.env` 和数据库密文维护。
+
 ### 2026-08-21 · 修复 resolve_service 密钥解密失败误报"LLM 未配置"
 
 - **现象**:运行中后端 `POST /chat` 报 `RuntimeError: LLM 未配置:请设置环境变量 LLM_API_KEY`(`llm.py:33 _client_config`),聊天流中断(session_id=45)。
