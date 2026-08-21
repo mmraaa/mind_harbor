@@ -188,12 +188,21 @@ export default function ChatPage() {
     <div className="companion-page">
       <section className="companion-chat">
         <header className="companion-chat__header">
-          <div>
-            <h2>小屿 · 陪伴助手</h2>
-            <p>
-              {sessionId != null ? `会话 #${sessionId}` : '新会话'}
-              {readOnly ? ' · 已结束（只读回放）' : ' · 切换页面会保留当前对话'}
-            </p>
+          <div className="companion-chat__brand">
+            <img
+              className="companion-avatar companion-avatar--lg"
+              src="/images/xiaoyu-avatar.webp"
+              alt="小屿"
+              width={48}
+              height={48}
+            />
+            <div>
+              <h2>小屿 · 陪伴助手</h2>
+              <p>
+                {sessionId != null ? `会话 #${sessionId}` : '新会话'}
+                {readOnly ? ' · 已结束（只读回放）' : ' · 切换页面会保留当前对话'}
+              </p>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             {sessionId != null && !readOnly && (
@@ -215,35 +224,44 @@ export default function ChatPage() {
         <div ref={streamRef} className="companion-stream" aria-live="polite">
           {messages.map((m) => (
             <article key={m.key} className={`msg msg--${m.role}`}>
-              {m.role === 'assistant' && (
-                <div className="msg__meta">
-                  <span>MindHarbor</span>
-                  {m.emotion && <span className="chip">{m.emotion}</span>}
-                  {m.id != null && (
-                    <button
-                      type="button"
-                      className="ghost-button"
-                      style={{ minHeight: 28, padding: '0 8px' }}
-                      onClick={() => void toggleFavorite(m)}
-                      aria-label={m.isFavorite ? '取消收藏' : '收藏'}
-                    >
-                      {m.isFavorite ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
-                    </button>
-                  )}
+              {m.role === 'assistant' ? (
+                <div className="msg__row">
+                  <img
+                    className="companion-avatar"
+                    src="/images/xiaoyu-avatar.webp"
+                    alt=""
+                    width={36}
+                    height={36}
+                  />
+                  <div className="msg__body">
+                    <div className="msg__meta">
+                      <span>小屿</span>
+                      {m.emotion && <span className="chip">{m.emotion}</span>}
+                      {m.id != null && (
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          style={{ minHeight: 28, padding: '0 8px' }}
+                          onClick={() => void toggleFavorite(m)}
+                          aria-label={m.isFavorite ? '取消收藏' : '收藏'}
+                        >
+                          {m.isFavorite ? <BookmarkCheck size={14} /> : <Bookmark size={14} />}
+                        </button>
+                      )}
+                    </div>
+                    <div className="msg__bubble">
+                      {m.text ? <MarkdownMessage text={m.text} /> : m.streaming ? '…' : null}
+                    </div>
+                    {m.cards && m.cards.length > 0 && (
+                      <ToolCards
+                        cards={m.cards}
+                        onOpenBreathing={() => setBreathingModalOpen(true)}
+                      />
+                    )}
+                  </div>
                 </div>
-              )}
-              <div className="msg__bubble">
-                {m.role === 'assistant' ? (
-                  m.text ? <MarkdownMessage text={m.text} /> : m.streaming ? '…' : null
-                ) : (
-                  m.text
-                )}
-              </div>
-              {m.cards && m.cards.length > 0 && (
-                <ToolCards
-                  cards={m.cards}
-                  onOpenBreathing={() => setBreathingModalOpen(true)}
-                />
+              ) : (
+                <div className="msg__bubble">{m.text}</div>
               )}
             </article>
           ))}

@@ -25,13 +25,7 @@ export function EmotionPieChart({ items }: Props) {
       chart = echarts.init(hostRef.current)
       chart.setOption({
         color: PIE_COLORS,
-        tooltip: {
-          trigger: 'item',
-          formatter: (params: unknown) => {
-            const p = params as { name?: string; value?: number; percent?: number }
-            return `${p.name ?? ''}<br/>${p.value ?? 0} 条 · ${p.percent ?? 0}%`
-          },
-        },
+        tooltip: { show: false },
         legend: {
           orient: 'vertical',
           right: 8,
@@ -43,21 +37,29 @@ export function EmotionPieChart({ items }: Props) {
         series: [
           {
             type: 'pie',
-            radius: ['42%', '68%'],
-            center: ['38%', '50%'],
+            radius: ['44%', '70%'],
+            center: ['36%', '50%'],
             avoidLabelOverlap: true,
             itemStyle: {
               borderRadius: 6,
               borderColor: '#fffaf0',
               borderWidth: 2,
             },
-            label: { show: false },
+            // 悬停文案固定显示在环心，避免左侧扇区标签被裁切或省略
+            label: {
+              show: false,
+              position: 'center',
+            },
             emphasis: {
+              scale: true,
+              scaleSize: 6,
               label: {
                 show: true,
+                formatter: '{b}\n{c} 条 · {d}%',
                 fontSize: 13,
-                fontWeight: 600,
+                fontWeight: 650,
                 color: '#263934',
+                lineHeight: 20,
               },
             },
             data: visible.map((item) => ({

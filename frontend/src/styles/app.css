@@ -420,6 +420,13 @@
   background: rgba(255, 250, 240, 0.85);
 }
 
+.companion-chat__brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
 .companion-chat__header h2 {
   font-size: 1.25rem;
 }
@@ -429,6 +436,23 @@
   color: var(--muted);
   font-family: var(--font-ui);
   font-size: 0.78rem;
+}
+
+.companion-avatar {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 28%;
+  border: 1.5px solid rgba(201, 162, 99, 0.35);
+  background: #f6efe4;
+  box-shadow: 0 1px 3px rgba(62, 48, 32, 0.08);
+}
+
+.companion-avatar--lg {
+  width: 48px;
+  height: 48px;
 }
 
 .companion-stream {
@@ -450,6 +474,18 @@
 
 .msg--assistant {
   align-self: flex-start;
+  max-width: min(760px, 96%);
+}
+
+.msg__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.msg__body {
+  min-width: 0;
+  flex: 1;
 }
 
 .msg__meta {
@@ -3390,6 +3426,175 @@ a.tool-card__breathing-cta {
   color: var(--c-ink);
   font-family: var(--font-ui);
   font-size: 0.92rem;
+}
+
+.counselor-panel--profile {
+  padding: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(230, 238, 231, 0.55), transparent 42%),
+    linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(247, 242, 232, 0.92));
+}
+
+.counselor-profile-dossier {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.3fr);
+  gap: 0;
+  min-height: 148px;
+}
+
+.counselor-profile-dossier__identity {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 22px 24px 22px 28px;
+  border-right: 1px solid rgba(88, 117, 101, 0.14);
+}
+
+.counselor-profile-dossier__identity::before {
+  position: absolute;
+  top: 22px;
+  bottom: 22px;
+  left: 0;
+  width: 4px;
+  border-radius: 0 6px 6px 0;
+  background: linear-gradient(180deg, #6f8f7c, #456556);
+  content: '';
+}
+
+.counselor-profile-dossier__eyebrow {
+  margin: 0;
+  color: var(--sage-dark);
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.counselor-profile-dossier__name {
+  margin: 0;
+  color: var(--c-ink);
+  font-family: var(--font-serif);
+  font-size: clamp(1.45rem, 2.2vw, 1.85rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+}
+
+.counselor-profile-dossier__username {
+  margin: 0;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+}
+
+.counselor-profile-dossier__mood {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+  padding: 8px 12px 8px 8px;
+  border: 1px solid rgba(88, 117, 101, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 253, 248, 0.88);
+}
+
+.counselor-profile-dossier__mood-emoji {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(230, 238, 231, 0.9);
+  font-size: 1rem;
+}
+
+.counselor-profile-dossier__mood-label {
+  display: block;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.counselor-profile-dossier__mood strong {
+  color: var(--sage-dark);
+  font-family: var(--font-ui);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.counselor-profile-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 18px 18px 18px 16px;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(142, 175, 181, 0.16), transparent 36%),
+    rgba(255, 250, 240, 0.45);
+}
+
+.counselor-profile-metric {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgba(88, 117, 101, 0.14);
+  border-radius: 16px 16px 16px 8px;
+  background: rgba(255, 253, 248, 0.92);
+  box-shadow: 0 6px 18px rgba(72, 80, 67, 0.04);
+}
+
+.counselor-profile-metric dt {
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.counselor-profile-metric dd {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
+  color: var(--c-ink);
+  font-family: var(--font-ui);
+  font-size: 1.55rem;
+  font-weight: 720;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.counselor-profile-metric dd small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.counselor-profile-metric--risk {
+  border-color: rgba(165, 77, 69, 0.22);
+  background: rgba(248, 230, 225, 0.55);
+}
+
+.counselor-profile-metric--risk dt,
+.counselor-profile-metric--risk dd {
+  color: var(--danger);
+}
+
+@media (max-width: 900px) {
+  .counselor-profile-dossier {
+    grid-template-columns: 1fr;
+  }
+
+  .counselor-profile-dossier__identity {
+    border-right: 0;
+    border-bottom: 1px solid rgba(88, 117, 101, 0.14);
+  }
 }
 
 .counselor-trend-head {

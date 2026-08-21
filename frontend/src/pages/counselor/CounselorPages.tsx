@@ -858,36 +858,49 @@ export function StudentArchivePage() {
             <p className="archive-loading">正在载入详情…</p>
           ) : detail && student && profile ? (
             <>
-              <div className="counselor-panel">
-                <PanelTitle icon={BookOpenText} eyebrow="Student profile" title="基本信息" />
-                <dl className="counselor-profile-grid counselor-profile-grid--archive">
-                  <div>
-                    <dt>姓名</dt>
-                    <dd>{student.name || '—'}</dd>
+              <div className="counselor-panel counselor-panel--profile">
+                <div className="counselor-profile-dossier">
+                  <div className="counselor-profile-dossier__identity">
+                    <p className="counselor-profile-dossier__eyebrow">Student profile</p>
+                    <h2 className="counselor-profile-dossier__name">{student.name || '未命名学生'}</h2>
+                    <p className="counselor-profile-dossier__username">@{student.username}</p>
+                    <div className="counselor-profile-dossier__mood">
+                      <span className="counselor-profile-dossier__mood-emoji" aria-hidden>
+                        {emotionDisplay(profile.latest_emotion).emoji}
+                      </span>
+                      <div>
+                        <span className="counselor-profile-dossier__mood-label">最近情绪</span>
+                        <strong>{emotionDisplay(profile.latest_emotion).label}</strong>
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <dt>会话数</dt>
-                    <dd>{profile.session_count}</dd>
-                  </div>
-                  <div>
-                    <dt>日记数</dt>
-                    <dd>{profile.journal_count}</dd>
-                  </div>
-                  <div>
-                    <dt>高风险会话</dt>
-                    <dd>{profile.high_risk_sessions}</dd>
-                  </div>
-                  <div>
-                    <dt>最近情绪</dt>
-                    <dd>
-                      {emotionDisplay(profile.latest_emotion).emoji} {emotionDisplay(profile.latest_emotion).label}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>近 {days} 天记录</dt>
-                    <dd>{profile.emotion_count} 条</dd>
-                  </div>
-                </dl>
+
+                  <dl className="counselor-profile-metrics">
+                    <div className="counselor-profile-metric">
+                      <dt>会话</dt>
+                      <dd>{profile.session_count}</dd>
+                    </div>
+                    <div className="counselor-profile-metric">
+                      <dt>日记</dt>
+                      <dd>{profile.journal_count}</dd>
+                    </div>
+                    <div
+                      className={`counselor-profile-metric${
+                        profile.high_risk_sessions > 0 ? ' counselor-profile-metric--risk' : ''
+                      }`}
+                    >
+                      <dt>高风险会话</dt>
+                      <dd>{profile.high_risk_sessions}</dd>
+                    </div>
+                    <div className="counselor-profile-metric">
+                      <dt>近 {days} 天记录</dt>
+                      <dd>
+                        {profile.emotion_count}
+                        <small>条</small>
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
               </div>
 
               <div className="counselor-emotion-grid">
