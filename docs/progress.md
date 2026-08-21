@@ -39,7 +39,7 @@
 - **涉及文件/接口**:`backend/app/adapters/doodle_review.py`、`backend/app/admin_module/router.py`、`frontend/src/admin-module/AdminConsole.tsx`、`frontend/src/admin-module/adminApi.ts`、`backend/.env.example`、`docs/api.md`、`docs/openapi.json`。
 - **测试结果**:后端定向测试 `8 passed`；前端管理 API 测试 `4 passed`；`npx vite build` 通过；`python -m compileall -q backend/app` 通过。全量前端 `npm run build` 仍受仓库既有 `toBeInTheDocument` matcher 类型配置问题阻断，未修改队友认证测试。
 - **提交约束**:本次提交不包含 `.env`、测试代码、`.codex`、`memory.md`、构建产物或临时文件；远端分支已先快进同步队友提交。
-- **commit**:待提交
+- **commit**:`8eedcce`
 - **评审结论**:未评审
 - **遗留问题**:局域网服务器没有可定位的中间文件上传记录，未执行猜路径删除；远程数据库配置由本机忽略的 `.env` 和数据库密文维护。
 
