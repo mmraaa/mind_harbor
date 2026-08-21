@@ -26,6 +26,7 @@ def engine():
     Base.metadata.create_all(eng)
     yield eng
     Base.metadata.drop_all(eng)
+    eng.dispose()  # 释放连接池,防止全量测试时耗尽 PG max_connections 导致 connection fail
 
 
 @pytest.fixture(autouse=True)

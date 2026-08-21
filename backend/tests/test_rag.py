@@ -257,9 +257,23 @@ def test_milvus_store_rejects_wrong_dimension(milvus_store):
 def test_embed_calls_openai_compatible_endpoint(monkeypatch):
     from app.adapters import embedding as emb_mod
     from app.core.config import get_settings
+    from app.services.api_config import ResolvedService
 
     s = get_settings()
     captured = {}
+
+    # resolve_service 会读取开发库 admin_api_service_configs(应用配置),测试环境须显式注入,避免被库内配置覆盖
+    monkeypatch.setattr(
+        "app.adapters.embedding.resolve_service",
+        lambda service_id: ResolvedService(
+            "embedding",
+            "向量模型",
+            True,
+            s.embedding_api_key,
+            s.embedding_base_url,
+            s.embedding_model,
+        ),
+    )
 
     def fake_post(url, **kwargs):
         captured["url"] = url
