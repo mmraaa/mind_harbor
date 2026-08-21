@@ -66,7 +66,7 @@ export default function PracticePage() {
           <p className="section-kicker">练习展板</p>
           <h2 id="practice-intro-title">先选一个你愿意开始的小练习，不用一次做很多。</h2>
           <p>
-            这里收纳的是短时、可跟随、能随时结束的自助练习。你可以从呼吸、放松、感官着陆或专注训练里挑一项。
+            这里收纳的是短时、可跟随、能随时结束的自助练习。
           </p>
         </div>
       </section>

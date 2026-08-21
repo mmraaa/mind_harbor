@@ -1,16 +1,17 @@
 import { describe, expect, it } from 'vitest'
 
-import { getRoleMeta, isRole } from './roles'
+import { authVisual, isRole } from './roles'
 
-describe('role routing', () => {
-  it('maps each database role to its Chinese display name', () => {
-    expect(getRoleMeta('student').label).toBe('用户')
-    expect(getRoleMeta('admin').label).toBe('管理')
-    expect(getRoleMeta('counselor').label).toBe('咨询师')
+describe('role helpers', () => {
+  it('exposes shared auth visual copy', () => {
+    expect(authVisual.title).toBe('慢慢来，这里一直在。')
+    expect(authVisual.image).toBe('/images/pet-friends.jpg')
   })
 
   it('rejects unknown roles', () => {
     expect(isRole('student')).toBe(true)
+    expect(isRole('admin')).toBe(true)
+    expect(isRole('counselor')).toBe(true)
     expect(isRole('visitor')).toBe(false)
   })
 })

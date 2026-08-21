@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { getErrorMessage } from '../../api/client'
-import { getRoleMeta, type AuthMode } from './roles'
+import { authVisual, type AuthMode } from './roles'
 import { roleHome, useAuthStore } from '../../stores/auth'
 
 function isAuthMode(value: string | undefined): value is AuthMode {
@@ -39,8 +39,6 @@ export function AuthPage() {
 
   const mode = validMode
   const isRegister = mode === 'register'
-  // 登录页用学生视觉，注册页也用学生视觉（注册固定为学生角色）
-  const roleMeta = getRoleMeta('student')
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -66,14 +64,14 @@ export function AuthPage() {
   return (
     <main className="auth-page">
       <section className="auth-visual" aria-label="登录入口自然影像">
-        <img className="auth-visual-image" src={roleMeta.image} alt="自然与宠物陪伴的温暖场景" />
+        <img className="auth-visual-image" src={authVisual.image} alt="自然与宠物陪伴的温暖场景" />
         <div className="auth-visual-copy">
           <Link className="wordmark wordmark-light" to="/">
             <span className="wordmark-mark">M</span>
             MindHarbor
           </Link>
-          <p className="auth-kicker">{roleMeta.kicker}</p>
-          <h1>{roleMeta.title}</h1>
+          <p className="auth-kicker">{authVisual.kicker}</p>
+          <h1>{authVisual.title}</h1>
           <p>留一点空白，给呼吸，也给重新开始的勇气。</p>
         </div>
         <div className="auth-photo-caption">NATURE / PETS / QUIET COMPANY</div>
@@ -81,7 +79,7 @@ export function AuthPage() {
 
       <section className="auth-panel" aria-labelledby="auth-heading">
         <div className="auth-panel-inner">
-          <Link className="auth-back" to="/">← 返回首页</Link>
+          <Link className="auth-back" to="/"> 返回首页</Link>
           <p className="eyebrow">{isRegister ? 'START A GENTLE SPACE' : 'WELCOME BACK'}</p>
           <h2 id="auth-heading">{isRegister ? '把这份陪伴带回身边' : '回到为你留着的位置'}</h2>
 
