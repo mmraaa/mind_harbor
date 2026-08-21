@@ -80,6 +80,10 @@ def test_students_and_detail(client, db, seed_counselor, seed_user):
     assert body["profile"]["session_count"] >= 2
     assert body["profile"]["journal_count"] >= 1
     assert len(body["emotion_trend"]) >= 1
+    scored = [p for p in body["emotion_trend"] if p["count"] > 0]
+    assert scored
+    assert scored[-1]["avg_intensity"] == 5.0
+    assert body["profile"]["avg_intensity"] == 5.0
     assert any(s["title"] == "风险会话" and s["message_count"] >= 2 for s in body["sessions"])
 
 

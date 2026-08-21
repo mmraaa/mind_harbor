@@ -39,13 +39,20 @@ def _avg(values: list) -> float | None:
     return round(mean(values), 1) if values else None
 
 
-def _emotion_trend(emotions: list[Emotion], days: int) -> list[dict]:
-    """按日聚合平均强度,补齐窗口内每一天(无记录则为 null)。"""
-    by_day: dict[str, list[Emotion]] = {}
-    for e in emotions:
-        if e.created_at is None:
+def _mood_trend(
+    journals: list[Journal],
+    emotion_by_journal: dict[int, Emotion],
+    days: int,
+) -> list[dict]:
+    """按日聚合日记 mood_score 平均值,补齐窗口内每一天(无记录则为 null)。
+
+    响应字段仍用 avg_intensity,语义为当日平均情绪分(mood_score)。
+    """
+    by_day: dict[str, list[Journal]] = {}
+    for j in journals:
+        if j.created_at is None or j.mood_score is None:
             continue
-        by_day.setdefault(e.created_at.date().isoformat(), []).append(e)
+        by_day.setdefault(j.created_at.date().isoformat(), []).append(j)
 
     points: list[dict] = []
     start = (datetime.now() - timedelta(days=max(1, days) - 1)).date()
@@ -56,13 +63,15 @@ def _emotion_trend(emotions: list[Emotion], days: int) -> list[dict]:
         items = by_day.get(key, [])
         if items:
             cats: dict[str, int] = {}
-            for e in items:
-                cats[e.category] = cats.get(e.category, 0) + 1
-            top = max(cats.items(), key=lambda kv: kv[1])[0]
+            for j in items:
+                emo = emotion_by_journal.get(j.id)
+                if emo is not None:
+                    cats[emo.category] = cats.get(emo.category, 0) + 1
+            top = max(cats.items(), key=lambda kv: kv[1])[0] if cats else None
             points.append(
                 {
                     "date": key,
-                    "avg_intensity": round(mean(e.intensity for e in items), 1),
+                    "avg_intensity": round(mean(j.mood_score for j in items), 1),
                     "count": len(items),
                     "top_category": top,
                 }
@@ -170,6 +179,16 @@ def student_detail(
         .order_by(Journal.id.desc())
         .all()
     )
+    journals_in_window = (
+        db.query(Journal)
+        .filter(
+            Journal.user_id == student_id,
+            Journal.created_at >= cutoff,
+            Journal.mood_score.isnot(None),
+        )
+        .order_by(Journal.created_at)
+        .all()
+    )
     journal_ids = [j.id for j in journals]
     journal_emotions = (
         db.query(Emotion).filter(Emotion.journal_id.in_(journal_ids)).all() if journal_ids else []
@@ -214,13 +233,13 @@ def student_detail(
             "journal_count": journal_count,
             "high_risk_sessions": high_risk_sessions,
             "emotion_count": len(emotions),
-            "avg_intensity": _avg([e.intensity for e in emotions]),
+            "avg_intensity": _avg([j.mood_score for j in journals_in_window]),
             "latest_emotion": latest.category if latest else None,
             "latest_intensity": latest.intensity if latest else None,
             "latest_at": _iso(latest.created_at) if latest else None,
         },
         "days": days,
-        "emotion_trend": _emotion_trend(emotions, days),
+        "emotion_trend": _mood_trend(journals_in_window, emotion_by_journal, days),
         "emotion_series": [
             {
                 "id": e.id,

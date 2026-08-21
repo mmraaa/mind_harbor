@@ -98,7 +98,7 @@ export function AuthPage() {
               </label>
             )}
             <label>
-              <span>账号</span>
+              <span>用户名</span>
               <input
                 value={username}
                 onChange={(event) => setUsername(event.target.value)}
@@ -106,7 +106,7 @@ export function AuthPage() {
                 minLength={3}
                 maxLength={32}
                 required
-                placeholder="输入账号"
+                placeholder="输入用户名"
               />
             </label>
             <label>

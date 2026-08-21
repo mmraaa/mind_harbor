@@ -30,7 +30,7 @@ export function EmotionTrendChart({ points }: Props) {
             const point = points[first.dataIndex ?? 0]
             if (!point) return ''
             const intensity = point.avg_intensity == null ? '无记录' : `${point.avg_intensity}`
-            return `${point.date}<br/>均强 ${intensity}<br/>记录 ${point.count} 条`
+            return `${point.date}<br/>情绪分 ${intensity}<br/>日记 ${point.count} 篇`
           },
         },
         xAxis: {
@@ -71,5 +71,5 @@ export function EmotionTrendChart({ points }: Props) {
     }
   }, [points])
 
-  return <div ref={hostRef} className="counselor-trend-chart" role="img" aria-label="情绪强度折线图" />
+  return <div ref={hostRef} className="counselor-trend-chart" role="img" aria-label="日记情绪分折线图" />
 }

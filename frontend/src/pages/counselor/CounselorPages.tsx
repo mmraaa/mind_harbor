@@ -9,9 +9,11 @@ import {
 import { streamCounselorChat } from '../../api/counselorChat'
 import { getErrorMessage } from '../../api/client'
 import {
+  fetchEmotionDistribution,
   fetchSessionMessages,
   fetchStudentDetail,
   fetchStudents,
+  type EmotionDistItem,
   type SessionMessage,
   type StudentDetail,
   type StudentSessionIndex,
@@ -19,6 +21,7 @@ import {
 } from '../../api/counselorStats'
 import { emotionDisplay } from '../../data/emotions'
 import { CounselorToolCards, CounselorToolsHint } from '../../components/CounselorToolCards'
+import { EmotionPieChart } from '../../components/EmotionPieChart'
 import { EmotionTrendChart } from '../../components/EmotionTrendChart'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
 import { useCounselorAgentStore } from '../../stores/counselorAgent'
@@ -673,6 +676,8 @@ export function StudentArchivePage() {
   const [students, setStudents] = useState<StudentSummary[]>([])
   const [activeId, setActiveId] = useState<number | null>(null)
   const [detail, setDetail] = useState<StudentDetail | null>(null)
+  const [distribution, setDistribution] = useState<EmotionDistItem[]>([])
+  const [distTotal, setDistTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState('')
@@ -697,6 +702,8 @@ export function StudentArchivePage() {
       } else {
         setActiveId(null)
         setDetail(null)
+        setDistribution([])
+        setDistTotal(0)
         setBrowseKind(null)
         setForcedSessionId(null)
       }
@@ -718,8 +725,14 @@ export function StudentArchivePage() {
     setDetailLoading(true)
     ;(async () => {
       try {
-        const d = await fetchStudentDetail(activeId, days)
-        if (alive) setDetail(d)
+        const [d, dist] = await Promise.all([
+          fetchStudentDetail(activeId, days),
+          fetchEmotionDistribution(days, activeId),
+        ])
+        if (!alive) return
+        setDetail(d)
+        setDistribution(dist.distribution)
+        setDistTotal(dist.total)
       } catch (err) {
         if (alive) setError(getErrorMessage(err, '无法加载学生详情'))
       } finally {
@@ -749,8 +762,8 @@ export function StudentArchivePage() {
   }, [trendPoints])
   const trendSummary =
     recordedDays > 0
-      ? `近 ${days} 天中 ${recordedDays} 天有记录，平均强度 ${periodAvg ?? '—'}`
-      : `近 ${days} 天暂无情绪强度数据`
+      ? `近 ${days} 天中 ${recordedDays} 天有日记，平均情绪分 ${periodAvg ?? '—'}`
+      : `近 ${days} 天暂无日记情绪分`
 
   return (
     <div className="counselor-page">
@@ -877,38 +890,54 @@ export function StudentArchivePage() {
                 </dl>
               </div>
 
-              <div className="counselor-panel counselor-panel--trend">
-                <div className="counselor-trend-head">
-                  <PanelTitle
-                    icon={Sparkles}
-                    eyebrow="Emotion trend"
-                    title={`${student.name} · 情绪变化`}
-                    note={trendSummary}
-                  />
-                  <div className="counselor-trend-head__aside">
-                    <div className="counselor-trend-avg">
-                      <span>平均强度</span>
-                      <strong>{periodAvg ?? '—'}</strong>
-                    </div>
-                    <div className="counselor-filter-row">
-                      {[7, 14, 30].map((n) => (
-                        <button
-                          key={n}
-                          type="button"
-                          className={`ghost-button${days === n ? ' ghost-button--active' : ''}`}
-                          onClick={() => setDays(n)}
-                        >
-                          {n} 天
-                        </button>
-                      ))}
+              <div className="counselor-emotion-grid">
+                <div className="counselor-panel counselor-panel--trend">
+                  <div className="counselor-trend-head">
+                    <PanelTitle
+                      icon={Sparkles}
+                      eyebrow="Emotion trend"
+                      title={`${student.name} · 情绪变化`}
+                      note={trendSummary}
+                    />
+                    <div className="counselor-trend-head__aside">
+                      <div className="counselor-trend-avg">
+                        <span>平均情绪分</span>
+                        <strong>{periodAvg ?? '—'}</strong>
+                      </div>
+                      <div className="counselor-filter-row">
+                        {[7, 14, 30].map((n) => (
+                          <button
+                            key={n}
+                            type="button"
+                            className={`ghost-button${days === n ? ' ghost-button--active' : ''}`}
+                            onClick={() => setDays(n)}
+                          >
+                            {n} 天
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
+                  {trendPoints.some((p) => p.count > 0) ? (
+                    <EmotionTrendChart points={trendPoints} />
+                  ) : (
+                    <p className="archive-empty__text">暂无情绪数据。</p>
+                  )}
                 </div>
-                {trendPoints.some((p) => p.count > 0) ? (
-                  <EmotionTrendChart points={trendPoints} />
-                ) : (
-                  <p className="archive-empty__text">暂无情绪数据。</p>
-                )}
+
+                <div className="counselor-panel counselor-panel--pie">
+                  <PanelTitle
+                    icon={Sparkles}
+                    eyebrow="Emotion mix"
+                    title="情绪类别分布"
+                    note={
+                      distTotal > 0
+                        ? `近 ${days} 天共 ${distTotal} 条情绪记录`
+                        : `近 ${days} 天暂无情绪类别数据`
+                    }
+                  />
+                  <EmotionPieChart items={distribution} />
+                </div>
               </div>
 
               <div className="counselor-record-grid">
