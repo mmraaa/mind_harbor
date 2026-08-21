@@ -128,7 +128,12 @@ def resolve_service(service_id: str) -> ResolvedService:
             row = db.get(ApiServiceConfig, service_id)
             if row is None:
                 return fallback
-            return _from_row(row)
+            svc = _from_row(row)
+            # 配置行存在但密钥解密失败(如加密所用密钥与当前 JWT 不一致)
+            # → 回退环境变量,避免把可用环境误判为"未配置"
+            if not svc.api_key:
+                return fallback
+            return svc
         finally:
             db.close()
     except Exception:  # noqa: BLE001 - 配置读取失败不能阻断环境变量 fallback

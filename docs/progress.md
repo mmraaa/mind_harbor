@@ -32,6 +32,18 @@
 (无)
 
 ## 已完成
+### 2026-08-21 · 修复 resolve_service 密钥解密失败误报"LLM 未配置"
+
+- **现象**:运行中后端 `POST /chat` 报 `RuntimeError: LLM 未配置:请设置环境变量 LLM_API_KEY`(`llm.py:33 _client_config`),聊天流中断(session_id=45)。
+- **根因(系统化调试确认)**:`api_config._fernet()` 的加解密密钥由 `JWT_SECRET` 派生;`admin_api_service_configs` 行里的 `api_key_encrypted` 用**当时**的 `JWT_SECRET` 加密。当运行后端的进程环境里 `JWT_SECRET`(或 API key)与加密时不一致时,`decrypt_secret` 捕获 `InvalidToken` 返回空串,`resolve_service` 又只在"行不存在"时才回退环境变量 → 行存在但 key 解密失败 → 返回空 key → 误报"未配置"。用 `JWT_SECRET=change-me` 模拟验证:decrypt 前缀 '' / resolve api_key 为空,复现一致。当前正常配置下 resolve 返回 `sk-ws-...`/glm-5,环境无恙。
+- **修复(TDD)**:新增失败测试 `tests/test_admin_api_config.py::test_resolve_service_falls_back_to_env_when_db_key_undecryptable`(插入无法解密的加密串 + SessionLocal 注入测试库)→ RED → `resolve_service` 在行存在但 `api_key` 为空时**回退环境变量** → GREEN。
+- **顺带纠正**:本条目同时修正 2026-08-20 条目对 `test_rag` embed 测试"配置行 key 为空"的错误归因(真正根因是同一解密失败机制)。
+- **涉及文件**:`backend/app/services/api_config.py`、`backend/tests/test_admin_api_config.py`、`docs/progress.md`
+- **测试结果**:全量 `pytest` **126 passed 全绿**(约 2 分钟)。
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:① 运行后端的进程需确保 cwd=backend 且环境变量未被覆盖(`JWT_SECRET` 须与加密时一致,否则解密失败虽已回退环境变量,但依赖 DB 自定义 base_url/model 的配置将不生效);② `test_rag.py` 已有的 mock 注入可保留(测试隔离),根因层面已由上述测试覆盖。
+
 ### 2026-08-21 · 撰写《项目开发计划》文档
 
 - **完成内容**:按课程工程文档目录(1 前言 / 2 项目概述 / 3 利益相关人 / 4 已定义过程 / 5 项目监控计划 / 6 测试工具和软件环境)编写开发计划,内容全部对齐真实项目:M1–M8 里程碑与实际进度、三角色职责、TDD/增量生命周期、活动安排 WBS、当前 125 用例全绿基线、遗留待办。
@@ -46,7 +58,7 @@
 - **完成内容**:新增两个接口——`PATCH /api/v1/auth/me` 修改昵称 `name`(`role`/`username` 不可改、显式传入返回 400;`email`/`phone` 为**后续功能**,本轮不提供字段、传入被忽略);`PUT /api/v1/auth/password` 修改密码(校验旧密码,新密码哈希落库;旧 JWT 保持有效,按设计决策不引入黑名单)。`users` 表本轮不加列。
 - **涉及文件/接口**:`backend/app/api/auth.py`、`backend/app/schemas/user.py`(ProfileUpdate/PasswordChange)、`backend/tests/test_auth.py`;文档 `docs/api.md`/`docs/openapi.json`(重新生成,32 paths)、`docs/2026-08-20-mindharbor-course-spec.md`(§3.1.1/§3.2.2/§5.2)
 - **测试结果(TDD)**:先写 11 个失败测试确认 RED(路由缺失 405/404);按用户新需求(仅 name)调整测试后再次 RED(断言 UserOut 不再含 email/phone)→ 实现 → **全量 `pytest` 125 passed 全绿(约 2 分钟)**。
-- **顺带修复(既有问题,非 auth 引入)**:① `generate_breathing` 模板缺失 `box`(schema 声明 enum 有 box 但实现只有 478,既有雷区)→ 补模板全量转绿;② conftest `engine` fixture 不 `dispose()` 致全量连接池耗尽(connection fail)→ teardown 补 dispose;③ `test_rag.py::test_embed_calls_openai_compatible_endpoint` 未 mock `resolve_service`,而 `app/services/api_config.resolve_service` 会用 `SessionLocal()` 读**开发库** `admin_api_service_configs`(测试库隔离只禁 sync,没隔离此路径;开发库该行配置使 key 为空)→ 按其他 LLM 测试范式注入确定 `ResolvedService`。
+- **顺带修复(既有问题,非 auth 引入)**:① `generate_breathing` 模板缺失 `box`(schema 声明 enum 有 box 但实现只有 478,既有雷区)→ 补模板全量转绿;② conftest `engine` fixture 不 `dispose()` 致全量连接池耗尽(connection fail)→ teardown 补 dispose;③ `test_rag.py::test_embed_calls_openai_compatible_endpoint` 报"未配置"——当时按"开发库配置行 key 为空"处置(mock 注入),**该归因于 2026-08-21 条目修正**:真正根因是 `resolve_service` 对"行存在但密钥无法解密"的场景不回退环境变量。
 - **经验**:并发跑两个 pytest 进同一测试库会互踩(drop/create 竞争 → UniqueViolation/挂起),必须串行;"远程库锁影响"旧表述不准确——测试只连本机 PG,瞬态失败来自连接池/顺序,均已查明修复。
 - **commit**:未提交
 - **评审结论**:未评审
