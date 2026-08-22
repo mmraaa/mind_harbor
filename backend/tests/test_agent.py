@@ -27,7 +27,6 @@ EXPECTED_TOOL_NAMES = {
     "create_reminder",
     "recommend_resources",
     "query_emotion_stats",
-    "speak_voice",
 }
 
 
@@ -53,7 +52,7 @@ def test_registry_has_all_seven_tools():
 
 def test_registry_openai_tools_format():
     tools = tools_registry.registry.openai_tools()
-    assert len(tools) == 7
+    assert len(tools) == len(EXPECTED_TOOL_NAMES)
     for t in tools:
         assert t["type"] == "function"
         assert t["function"]["name"] in EXPECTED_TOOL_NAMES
@@ -213,36 +212,6 @@ def test_query_emotion_stats_rejects_unsafe_sql(bad_sql, db, seed_user, monkeypa
         handler(db, seed_user.id, 1, question="随便")
 
 
-def test_speak_voice_tool_returns_url(db, seed_user, monkeypatch):
-    monkeypatch.setattr(
-        "app.ai.tools.speak_voice.tts.synthesize_with_url",
-        lambda text, **kw: {"audio": b"fake-audio", "url": "https://example.com/voice.mp3"},
-    )
-
-    handler = tools_registry.registry.get("speak_voice").handler
-    result = handler(db, seed_user.id, 1, text="我在这里陪着你")
-
-    assert result["url"] == "https://example.com/voice.mp3"
-    assert result["text"] == "我在这里陪着你"
-
-
-def test_speak_voice_tool_degrades_when_tts_fails(db, seed_user, monkeypatch):
-    """TTS 不可用 → 降级文本卡片,不抛异常、不中断 Agent 循环。"""
-
-    def boom(text, **kw):
-        raise RuntimeError("TTS 404")
-
-    monkeypatch.setattr("app.ai.tools.speak_voice.tts.synthesize_with_url", boom)
-
-    handler = tools_registry.registry.get("speak_voice").handler
-    result = handler(db, seed_user.id, 1, text="我在这里陪着你")
-
-    assert result["type"] == "voice"
-    assert result["url"] is None
-    assert result["degraded"] is True
-    assert result["text"] == "我在这里陪着你"
-
-
 # ---------- agent 循环 ----------
 
 
@@ -327,7 +296,7 @@ def test_create_reminder_rejects_past_time(db, seed_user):
 
 
 def test_agent_run_executes_multiple_tools_in_one_round(db, seed_user, seed_session, monkeypatch):
-    """一轮返回多个 tool_call(如 search_knowledge + speak_voice)→ 全部执行。"""
+    """一轮返回多个 tool_call(如 search_knowledge + generate_breathing)→ 全部执行。"""
 
     calls = []
 
@@ -338,7 +307,7 @@ def test_agent_run_executes_multiple_tools_in_one_round(db, seed_user, seed_sess
                 None,
                 [
                     {"id": "c1", "type": "function", "function": {"name": "generate_breathing", "arguments": "{}"}},
-                    {"id": "c2", "type": "function", "function": {"name": "generate_breathing", "arguments": json.dumps({"exercise": "box"})}},
+                    {"id": "c2", "type": "function", "function": {"name": "generate_breathing", "arguments": json.dumps({"exercise": "unsupported"})}},
                 ],
             )
         return (None, [])  # 第二轮结束
@@ -351,7 +320,7 @@ def test_agent_run_executes_multiple_tools_in_one_round(db, seed_user, seed_sess
     )
     assert len(cards) == 2  # 两个工具都执行
     assert cards[0]["exercise"] == "478"
-    assert cards[1]["exercise"] == "box"
+    assert cards[1]["exercise"] == "478"  # 不支持的 exercise 参数降级回默认 478
 
 
 def test_agent_run_max_rounds_guard(db, seed_user, seed_session, monkeypatch):
@@ -374,3 +343,13 @@ def test_agent_run_max_rounds_guard(db, seed_user, seed_session, monkeypatch):
         system_prompt="你是陪伴助手", context="",
     )
     assert len(cards) == agent.MAX_TOOL_ROUNDS
+
+
+def test_registry_has_six_tools_without_speak_voice():
+    """语音能力收敛为独立模块,speak_voice 不再作为 Agent 工具。"""
+    names = tools_registry.registry.names()
+    assert "speak_voice" not in names
+    assert len(names) == 6
+    for name in ("record_emotion", "search_knowledge", "generate_breathing",
+                 "create_reminder", "recommend_resources", "query_emotion_stats"):
+        assert name in names
