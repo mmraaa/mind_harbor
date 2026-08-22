@@ -33,6 +33,29 @@
 
 ## 已完成
 
+### 2026-08-21 · 撰写《架构说明》(对标软件架构文档模板)
+
+- **完成内容**:按架构文档模板(简介 → 构架表示方式 → 目标约束 → 关键功能视图 → 层次结构 → 逻辑视图)编写 MindHarbor 架构说明,与实现一一对应:5 个关键功能(情绪识别与日记底座 / AI 陪伴对话 / RAG / 语音陪伴 / 咨询师评估 = 对应模板的简历解析·AI 对话·RAG·语音面试·评估报告);层次结构 mermaid 图(表现→接口→商业→AI 编排→适配→数据);逻辑视图 6 层(用户服务层即三角色前端 / 商业服务层即 services+admin_module / AI 能力服务层 / 数据服务层 PG+Milvus / 部署视图)。
+- **涉及文件**:`docs/2026-08-21-mindharbor-architecture.md`(新增;引用 `docs/diagrams/*.mmd`)
+- **测试结果**:文档任务,无代码改动
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:无;图嵌入沿用 Mermaid。
+
+### 2026-08-21 · 绘制系统用例图与序列图(Mermaid)
+
+- **完成内容**:放弃 drawio 方案(WSL2 无显示服务,U 依赖 X 渲染不可用),改用 Mermaid 绘制系统图,共 5 张,置于 `docs/diagrams/`。
+  - `mindharbor-usecase.mmd` 用例图(学生/咨询师/管理员三角色 × 用例,聊天 `«include»` 工具与「情绪识别·风险筛查·上下文记忆」)
+  - `mindharbor-auth-sequence.mmd` 认证序列(注册/登录 → bcrypt → JWT 签发 → `get_current_user`/`require_roles` 的 401/403 守卫)
+  - `mindharbor-chat-sequence.mmd` 聊天闭环序列(情绪/风险 → 记忆上下文 → Agent function-calling 循环 → SSE 流式回复 → 结束生成日记/情绪落库 → 咨询师端趋势)
+  - `mindharbor-sqlagent-sequence.mmd` SQL Agent 安全序列(自然语言 → SELECT → sqlglot 单条/SELECT/白名单校验 → 注入 user_id+LIMIT + `SET TRANSACTION READ ONLY` → 中文解释)
+  - `mindharbor-rag-sequence.mmd` RAG 混合检索序列(关键词 ILIKE + 向量检索 → RRF 融合 → 父块回查 → 引用来源/防幻觉兜底)
+- **涉及文件**:`docs/diagrams/*.mmd`(5 张新增);`docs/2026-08-20-mindharbor-course-spec.md`(追加「附录 C:系统设计图」,内嵌 mermaid 代码块)
+- **测试结果**:文档/图表任务,无代码改动;drawio 文件按用户决定废弃(已移除)
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:无。
+
 ### 2026-08-21 · 画作审核连接验证与 Token 统计
 
 - **完成内容**:画作审核管理端测试复用真实 DashScope 多模态路径；区分接口契约可达、鉴权/路径无效、限流和上游异常；新增 `POST /api/v1/admin/api-configs/doodle_review/validate`，使用固定小图片执行明确的模型验证；解析 DashScope/OpenAI 兼容格式的用量字段，并按一次用户请求统计成功/失败。

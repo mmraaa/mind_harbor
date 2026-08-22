@@ -349,3 +349,241 @@
 2. `backend/`：`cp .env.example .env` 填密钥 → `source .venv/bin/activate` → `pip install -r requirements.txt` → `python scripts/init_db.py` 建表 → `python scripts/seed.py` 种数据 → `uvicorn app.main:app --host 0.0.0.0 --port 8000`；
 3. `frontend/`：`pnpm install` → `pnpm dev`（vite 代理 `/api` → :8000）；
 4. 后端测试：`cd backend && pytest tests -v`（不真实调用 LLM）。
+
+---
+
+## 附录 C:系统设计图(Mermaid)
+
+> 图源文件:`docs/diagrams/*.mmd`,可在线/本地 Mermaid 渲染。
+
+### 用例图 — 三角色 × 用例与包含关系(系统边界)
+
+```mermaid
+flowchart TB
+    STUDENT(("👤 学生"))
+    COUNSELOR(("👤 咨询师"))
+    ADMIN(("👤 管理员"))
+
+    subgraph SYSTEM["MindHarbor 系统"]
+        direction TB
+
+        subgraph STU["学生端"]
+            direction TB
+            u1["注册 / 登录"]
+            u2["情绪倾诉(流式聊天)"]
+            u3["调用陪伴工具<br/>知识检索 · 呼吸 · 提醒 · 语音 · 统计"]
+            u4["收藏回复与历史回放"]
+            u5["查看情绪日记(只读)"]
+            u6["修改昵称 / 修改密码"]
+            uAI["情绪识别 · 风险筛查 · 上下文记忆"]
+        end
+
+        subgraph COU["咨询师端"]
+            direction TB
+            c1["咨询师登录"]
+            c2["SQL 助手查询<br/>学生情绪统计"]
+            c3["学生档案 · 情绪趋势"]
+            c4["会话回放 · 风险质检"]
+            c5["按名学生日记检索"]
+        end
+
+        subgraph ADM["管理后台"]
+            direction TB
+            m1["咨询师 / 学生 / 资源管理"]
+            m2["AI 服务配置与测试"]
+            m3["数据统计概览"]
+        end
+    end
+
+    %% 学生 actor 关联用例
+    STUDENT --- u1 & u2 & u3 & u4 & u5 & u6
+    %% 聊天对内部能力的 include
+    u2 -. "«include»" .-> u3
+    u2 -. "«include»" .-> uAI
+
+    %% 咨询师 actor 关联用例
+    COUNSELOR --- c1 & c2 & c3 & c4 & c5
+
+    %% 管理员 actor 关联用例
+    ADMIN --- m1 & m2 & m3
+```
+
+### C.2 认证与权限序列 — 注册/登录 → bcrypt → JWT 签发 → 角色守卫
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FE as 前端登录页
+    participant API as FastAPI /auth
+    participant SEC as core/security
+    participant PG as PostgreSQL(users)
+    participant DEP as deps 鉴权依赖
+
+    Note over FE,DEP: 注册/登录 → bcrypt 哈希校验 → JWT 签发 → 三角色守卫
+
+    FE->>API: POST /auth/register {username, password, name}
+    API->>PG: 校验用户名唯一
+    alt 用户已存在
+        API-->>FE: 409 用户名已被使用
+    else 唯一
+        API->>SEC: hash_password(bcrypt 加盐)
+        SEC-->>API: password_hash
+        API->>PG: 写入 users(role=student, 注册即登录)
+        API->>SEC: create_access_token(user_id, exp)
+        SEC-->>FE: access_token + user
+    end
+
+    FE->>API: POST /auth/login {username, password}
+    API->>PG: 按 username 查询 + 账号启用状态
+    alt 账号停用(AccountControl)
+        API-->>FE: 403 账号已停用,请联系管理员
+    else 校验密码失败
+        API-->>FE: 401 用户名或密码错误
+    else 校验通过
+        API->>SEC: create_access_token(user_id, exp)
+        SEC-->>FE: access_token + user
+    end
+
+    Note over FE,DEP: 携带 Authorization: Bearer <token> 访问受保护接口(如 /chat、权限接口)
+    FE->>API: GET/POST 受保护接口(Bearer token)
+    API->>DEP: get_current_user 解析并校验 JWT
+    alt token 缺失/无效/过期
+        DEP-->>FE: 401 未登录 / token 无效或过期
+    else 角色不满足 require_roles
+        DEP-->>FE: 403 权限不足
+    else 通过
+        DEP-->>API: 当前 User(学生只可见本人数据,SQL 强制 user_id 过滤)
+    end
+```
+
+### 聊天与情绪日记闭环序列 — 文字聊天 → 情绪/风险 → 记忆 → Agent → 流式回复 → 日记落库
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FE as 学生端前端(SSE)
+    participant API as FastAPI /chat
+    participant Dlg as dialogue 控制器
+    participant Emo as 情绪识别 emotion
+    participant Mem as 记忆管理 memory
+    participant AG as Agent(工具循环)
+    participant KS as 工具集 / RAG
+    participant LLM as 云端 LLM
+    participant PG as PostgreSQL
+    participant CO as 咨询师端
+
+    Note over FE,PG: 文字聊天 → 情绪识别/风险筛查 → 记忆上下文 → 生成回复 → 情绪日记闭环
+
+    FE->>API: POST /chat {content, session_id?, end_session}
+    API->>Dlg: chat_stream(user, session, msg)
+
+    Dlg->>Emo: 情绪识别(结构化 JSON)
+    Emo->>LLM: complete_json(情绪类别/强度/压力来源/支持需求)
+    LLM-->>Emo: {category, intensity, stress_source, support_need}
+    Emo-->>Dlg: 情绪结果
+
+    alt 命中风险关键词/LLM 判定
+        Dlg-->>FE: SSE 风险安抚模板(热线/校内渠道)+ 会话 risk_level=high 落库
+    end
+
+    Dlg->>Mem: assemble_context(短期窗口 + 会话摘要 + 长期画像)
+    Mem-->>Dlg: 拼接后的对话上下文
+
+    Dlg->>AG: run(工具决策循环)
+    loop function-calling 循环
+        AG->>LLM: chat_with_tools(messages, tools)
+        alt LLM 返回 tool_call
+            AG->>KS: search_knowledge / record_emotion / generate_breathing / speak_voice ...
+            KS->>PG: 查询/写入 emotions 等
+            KS-->>AG: 结构化工具结果
+            AG-->>FE: SSE tool_card 事件
+        else LLM 返回回复文本
+            LLM-->>AG: 流式文本
+            AG-->>FE: SSE text 事件(逐 token)
+        end
+    end
+
+    opt end_session=true(或手动结束)
+        Dlg->>Mem: 更新短期窗口与会话摘要 → 沉淀长期画像
+        Note over Dlg,PG: LLM 生成情绪日记(摘要 + 结构化情绪,与情绪识别共用结构)
+        Dlg->>LLM: journal.generate(会话上下文)
+        LLM-->>Dlg: 日记摘要 / mood_score / 情绪记录
+        Dlg->>PG: 写入 journals + emotions(journal_id / session_id 关联)
+        Dlg-->>FE: SSE journal 事件(日记卡片)
+    end
+
+    Note over CO,PG: 咨询师端查看学生心理
+    CO->>PG: GET /counselor/stats/... 聚合 emotions → 趋势/档案
+    PG-->>CO: 情绪分布 / 学生档案 / 风险标记
+```
+
+### SQL Agent 安全查询序列 — 自然语言 → SELECT → AST 校验 → 数据隔离/只读执行 → 解释
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户(学生 / 咨询师)
+    participant AG as Agent 对话
+    participant LLM as 云端 LLM
+    participant VL as sqlglot 校验层
+    participant DB as PostgreSQL<br/>(SET TRANSACTION READ ONLY)
+
+    Note over U,DB: 自然语言 → SELECT → AST 校验 → 数据隔离/只读执行 → 中文解释
+
+    U->>AG: 问题「我最近的情绪分布如何」/「学生焦虑情况」
+    AG->>LLM: SQL_GEN_PROMPT + 问题 → 生成 SELECT(temperature=0)
+    LLM-->>AG: 一句 SELECT(只允许查白名单表)
+
+    AG->>VL: 校验:单条语句 + 必须 SELECT + 表白白名单
+    alt 不合法(多语句 / DML / 非白名单表)
+        VL-->>AG: ValueError → 友好错误 tool_card(不执行)
+    else 合法
+        VL->>DB: 学生端注入 WHERE user_id = <uid>;强制 LIMIT 100<br/>咨询师端仅 LIMIT(可查任意/全体)
+        DB->>DB: SET TRANSACTION READ ONLY(物理拒写)
+        DB-->>VL: 查询结果(headers/rows,Decimal→float 等可序列化处理)
+        VL-->>AG: 结构化行数据
+        AG->>LLM: EXPLAIN_PROMPT + 结果 → 中文解释(≤3 句)
+        LLM-->>AG: 解释文本
+    end
+
+    AG-->>U: SSE tool_card(统计表/解释) + text 总结
+```
+
+### RAG 混合检索序列 — 关键词 + 向量双路 → RRF 融合 → 父块上下文 → 引用
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as 用户(学生 / 咨询师)
+    participant AG as Agent(search_knowledge)
+    participant KW as 关键词提取
+    participant EMB as Embedding 适配
+    participant MV as Milvus v3(向量库)
+    participant PG as PostgreSQL(knowledge_chunks)
+    participant CTX as 父子分块(父块回查)
+    participant LLM as 云端 LLM
+    participant FE as 前端
+
+    Note over U,FE: 问题 → 关键词+向量双路检索 → RRF 融合 → 父块上下文 → 引用生成
+
+    U->>AG: 提问(如「考试焦虑怎么办」)
+    AG->>KW: 提取连续 CJK/英文关键词
+    KW->>PG: ILIKE 关键词精确匹配(子块)
+    PG-->>KW: 关键词命中子块
+    AG->>EMB: embed(query)
+    EMB-->>AG: query 向量
+    AG->>MV: 余弦 top-k 向量检索
+    MV-->>AG: 候选子块(向量路)
+
+    AG->>AG: Reciprocal Rank Fusion 融合排序<br/>(关键词加权 1.5,同分关键词优先)
+    AG->>CTX: 命中子块 → 回查父块完整文本(含标题语境)
+    CTX-->>AG: ChunkHit.context(父块文本)
+
+    alt 检索结果为空
+        AG-->>FE: 明确回复「资料库暂未收录该话题,建议预约校内咨询」(不编造)
+    else 有命中
+        AG->>LLM: 注入引用上下文生成回答(带来源)
+        LLM-->>AG: 带引用文本
+        AG-->>FE: SSE 文本 + 「参考来源」卡片
+    end
+```

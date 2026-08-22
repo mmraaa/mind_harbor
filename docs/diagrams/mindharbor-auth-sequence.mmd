@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    participant FE as 前端登录页
+    participant API as FastAPI /auth
+    participant SEC as core/security
+    participant PG as PostgreSQL(users)
+    participant DEP as deps 鉴权依赖
+
+    Note over FE,DEP: 注册/登录 → bcrypt 哈希校验 → JWT 签发 → 三角色守卫
+
+    FE->>API: POST /auth/register {username, password, name}
+    API->>PG: 校验用户名唯一
+    alt 用户已存在
+        API-->>FE: 409 用户名已被使用
+    else 唯一
+        API->>SEC: hash_password(bcrypt 加盐)
+        SEC-->>API: password_hash
+        API->>PG: 写入 users(role=student, 注册即登录)
+        API->>SEC: create_access_token(user_id, exp)
+        SEC-->>FE: access_token + user
+    end
+
+    FE->>API: POST /auth/login {username, password}
+    API->>PG: 按 username 查询 + 账号启用状态
+    alt 账号停用(AccountControl)
+        API-->>FE: 403 账号已停用,请联系管理员
+    else 校验密码失败
+        API-->>FE: 401 用户名或密码错误
+    else 校验通过
+        API->>SEC: create_access_token(user_id, exp)
+        SEC-->>FE: access_token + user
+    end
+
+    Note over FE,DEP: 携带 Authorization: Bearer <token> 访问受保护接口(如 /chat、权限接口)
+    FE->>API: GET/POST 受保护接口(Bearer token)
+    API->>DEP: get_current_user 解析并校验 JWT
+    alt token 缺失/无效/过期
+        DEP-->>FE: 401 未登录 / token 无效或过期
+    else 角色不满足 require_roles
+        DEP-->>FE: 403 权限不足
+    else 通过
+        DEP-->>API: 当前 User(学生只可见本人数据,SQL 强制 user_id 过滤)
+    end

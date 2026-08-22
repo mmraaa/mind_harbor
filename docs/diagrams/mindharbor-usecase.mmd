@@ -1,0 +1,47 @@
+flowchart TB
+    STUDENT(("👤 学生"))
+    COUNSELOR(("👤 咨询师"))
+    ADMIN(("👤 管理员"))
+
+    subgraph SYSTEM["MindHarbor 系统"]
+        direction TB
+
+        subgraph STU["学生端"]
+            direction TB
+            u1["注册 / 登录"]
+            u2["情绪倾诉(流式聊天)"]
+            u3["调用陪伴工具<br/>知识检索 · 呼吸 · 提醒 · 语音 · 统计"]
+            u4["收藏回复与历史回放"]
+            u5["查看情绪日记(只读)"]
+            u6["修改昵称 / 修改密码"]
+            uAI["情绪识别 · 风险筛查 · 上下文记忆"]
+        end
+
+        subgraph COU["咨询师端"]
+            direction TB
+            c1["咨询师登录"]
+            c2["SQL 助手查询<br/>学生情绪统计"]
+            c3["学生档案 · 情绪趋势"]
+            c4["会话回放 · 风险质检"]
+            c5["按名学生日记检索"]
+        end
+
+        subgraph ADM["管理后台"]
+            direction TB
+            m1["咨询师 / 学生 / 资源管理"]
+            m2["AI 服务配置与测试"]
+            m3["数据统计概览"]
+        end
+    end
+
+    %% 学生 actor 关联用例
+    STUDENT --- u1 & u2 & u3 & u4 & u5 & u6
+    %% 聊天对内部能力的 include
+    u2 -. "«include»" .-> u3
+    u2 -. "«include»" .-> uAI
+
+    %% 咨询师 actor 关联用例
+    COUNSELOR --- c1 & c2 & c3 & c4 & c5
+
+    %% 管理员 actor 关联用例
+    ADMIN --- m1 & m2 & m3
