@@ -188,7 +188,14 @@ function BreathingCard({
   )
 }
 
-function ReminderCard({ payload }: { payload: ToolCardPayload }) {
+function ReminderCard({
+  payload,
+  scheduleOnMount = false,
+}: {
+  payload: ToolCardPayload
+  /** 仅实时对话产生卡片时为 true；回放/历史消息不得再注册，否则会重复通知 */
+  scheduleOnMount?: boolean
+}) {
   const content = typeof payload.content === 'string' ? payload.content : ''
   const remindAt = typeof payload.remind_at === 'string' ? payload.remind_at : ''
   if (!content || !remindAt) return null
@@ -202,13 +209,14 @@ function ReminderCard({ payload }: { payload: ToolCardPayload }) {
   )
 
   useEffect(() => {
+    if (!scheduleOnMount) return
     const item = registerLocalReminder({
       reminder_id: payload.reminder_id as number | undefined,
       content,
       remind_at: remindAt,
     })
     if (item) setScheduled(!item.fired)
-  }, [content, remindAt, payload.reminder_id])
+  }, [scheduleOnMount, content, remindAt, payload.reminder_id])
 
   const when = formatReminderWhen(remindAt)
   const past = new Date(remindAt).getTime() <= Date.now()
@@ -220,7 +228,7 @@ function ReminderCard({ payload }: { payload: ToolCardPayload }) {
         日程提醒
       </h4>
       <p className="tool-card__hint">
-        本机定时：页面打开期间到点会弹窗；关闭浏览器后需下次进入再补发。
+        登录学生端后会按约定时间发送浏览器通知；关闭浏览器后，下次登录会补发已到期的待办。
       </p>
       <p className="tool-card__reminder-content">{content}</p>
       <div className="tool-card__reminder-meta">
@@ -241,7 +249,12 @@ function ReminderCard({ payload }: { payload: ToolCardPayload }) {
   )
 }
 
-function renderToolPayload(p: ToolCardPayload, idx: number, onOpenBreathing?: () => void) {
+function renderToolPayload(
+  p: ToolCardPayload,
+  idx: number,
+  onOpenBreathing?: () => void,
+  scheduleReminders = false,
+) {
   if (p.type === 'knowledge' || p.type === 'sources') {
     return <KnowledgeCard key={`knowledge-${idx}`} payload={p} />
   }
@@ -258,7 +271,13 @@ function renderToolPayload(p: ToolCardPayload, idx: number, onOpenBreathing?: ()
     return <BreathingCard key={`breathing-${idx}`} payload={p} onOpen={onOpenBreathing} />
   }
   if (p.type === 'reminder') {
-    return <ReminderCard key={`reminder-${idx}`} payload={p} />
+    return (
+      <ReminderCard
+        key={`reminder-${idx}`}
+        payload={p}
+        scheduleOnMount={scheduleReminders}
+      />
+    )
   }
   return null
 }
@@ -267,9 +286,12 @@ function renderToolPayload(p: ToolCardPayload, idx: number, onOpenBreathing?: ()
 export function ToolCards({
   cards,
   onOpenBreathing,
+  scheduleReminders = false,
 }: {
   cards: UiCard[]
   onOpenBreathing?: () => void
+  /** 仅当前正在流式输出的消息传 true，避免历史回放重复注册本机定时 */
+  scheduleReminders?: boolean
 }) {
   const nodes = cards.flatMap((card, idx) => {
     if (card.kind === 'journal') {
@@ -299,7 +321,7 @@ export function ToolCards({
       )
     }
 
-    return renderToolPayload(card.payload, idx, onOpenBreathing)
+    return renderToolPayload(card.payload, idx, onOpenBreathing, scheduleReminders)
   })
 
   const visible = nodes.filter(Boolean)

@@ -255,6 +255,7 @@ export default function ChatPage() {
                     {m.cards && m.cards.length > 0 && (
                       <ToolCards
                         cards={m.cards}
+                        scheduleReminders={Boolean(m.streaming)}
                         onOpenBreathing={() => setBreathingModalOpen(true)}
                       />
                     )}

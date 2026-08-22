@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { fetchMe, login as apiLogin, register as apiRegister } from '../api/auth'
 import { getStoredToken, setStoredToken, type UserOut, type UserRole } from '../api/client'
+import { resetReminderHydration } from '../lib/localReminders'
 
 type AuthState = {
   token: string | null
@@ -70,6 +71,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   logout: () => {
     setStoredToken(null)
     sessionStorage.removeItem('mh_active_session_id')
+    resetReminderHydration()
     set({ token: null, user: null })
   },
 
