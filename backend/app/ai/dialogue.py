@@ -70,6 +70,22 @@ def _sse(evt_type: str, payload: dict) -> dict:
     return {"type": evt_type, "payload": payload}
 
 
+def stream_reply(*, content: str, context: str = "") -> Iterator[str]:
+    """LLM 流式回复增量(净文本片段)。供 HTTP SSE 与语音通道共用。
+
+    Args:
+        content: 用户本轮消息。
+        context: 已拼装上下文(记忆 + Agent 工具结果),可空。
+
+    Returns:
+        Iterator[str]: 逐 delta 的回复文本增量;调用方负责拼接/落库。
+    """
+    prompt = SYSTEM_PROMPT + ("\n\n" + context if context else "")
+    yield from llm.stream_chat(
+        [{"role": "system", "content": prompt}, {"role": "user", "content": content}]
+    )
+
+
 def chat_stream(
     db: Session,
     user: User,
@@ -134,12 +150,9 @@ def chat_stream(
         context = context + "\n\n" + tool_context
     tool_cards = tool_cards or None  # 供第 6 步持久化到 Message
 
-    # 4) LLM 流式生成 + 增量 text 事件
-    prompt = SYSTEM_PROMPT + "\n\n" + context
+    # 4) LLM 流式生成 + 增量 text 事件(复用 stream_reply,语音通道同入口)
     chunks = []
-    for delta in llm.stream_chat(
-        [{"role": "system", "content": prompt}, {"role": "user", "content": content}]
-    ):
+    for delta in stream_reply(content=content, context=context):
         chunks.append(delta)
         yield _sse("text", {"content": delta})
     reply = "".join(chunks).strip()
