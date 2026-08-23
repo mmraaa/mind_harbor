@@ -4,6 +4,7 @@ from app.admin_module.models import AccountControl, ApiServiceConfig
 from app.models.emotion import Emotion, Journal
 from app.models.knowledge import KnowledgeChunk, KnowledgeDoc
 from app.models.memory import UserMemory
+from app.models.profile import UserProfileAnalysisRun, UserProfileObservation, UserProfileSettings, UserProfileSnapshot
 from app.models.resource import Reminder, Resource
 from app.models.session import ChatSession, Favorite, Message
 from app.models.user import Counselor, User
@@ -21,6 +22,10 @@ __all__ = [
     "KnowledgeDoc",
     "KnowledgeChunk",
     "UserMemory",
+    "UserProfileSettings",
+    "UserProfileSnapshot",
+    "UserProfileObservation",
+    "UserProfileAnalysisRun",
     "AccountControl",
     "ApiServiceConfig",
 ]

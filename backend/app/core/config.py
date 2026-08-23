@@ -68,6 +68,12 @@ class Settings(BaseSettings):
     doodle_review_base_url: str = ""
     doodle_review_model: str = ""
 
+    # 独立的每日画像分析服务；不影响学生聊天模型和管理端配置。
+    profile_analysis_api_key: str = ""
+    profile_analysis_base_url: str = ""
+    profile_analysis_model: str = "qwen3.7-plus"
+    profile_analysis_timeout_seconds: int = 120
+
     @property
     def sync_database_url(self) -> str:
         return (
