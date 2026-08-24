@@ -5,6 +5,7 @@
 格式化成 `data: {json}\n\n` 由 `app/api/chat.py` 负责。
 """
 
+import base64
 import logging
 from typing import Iterator
 
@@ -39,6 +40,20 @@ RISK_CARD = {
     "hotline": "400-161-9995",
     "note": "心理危机干预热线 / 校内心理咨询中心(工作时间可直接预约)",
 }
+
+# —— 语音流式(句子级 TTS)切句规则 ——
+_SENT_PUNCT = ("。", "！", "？", "!", "?", "；", ";", "\n")
+_MAX_SENT_LEN = 20
+
+
+def _take_first_sentence(buf: str) -> str | None:
+    """返回缓冲区首个完整句(以标点或达长度上限为界);未完整返回 None。"""
+    for i, ch in enumerate(buf):
+        if ch in _SENT_PUNCT:
+            return buf[: i + 1]
+    if len(buf) >= _MAX_SENT_LEN:
+        return buf[:_MAX_SENT_LEN]
+    return None
 
 
 def get_or_create_session(db: Session, user: User, session_id: int | None) -> ChatSession:
@@ -151,11 +166,51 @@ def chat_stream(
     tool_cards = tool_cards or None  # 供第 6 步持久化到 Message
 
     # 4) LLM 流式生成 + 增量 text 事件(复用 stream_reply,语音通道同入口)
-    chunks = []
+    #    语音扩展:voice_reply=True 时按句流式 TTS,audio_chunk 紧跟对应文本句 → “语音跟得上文本”
+    voice_on = bool(body.voice_reply)
+    chunks: list[str] = []
+    buf = ""
+    audio_seq = 0
     for delta in stream_reply(content=content, context=context):
         chunks.append(delta)
         yield _sse("text", {"content": delta})
+        if not voice_on:
+            continue
+        buf += delta
+        while (sentence := _take_first_sentence(buf)) is not None:
+            buf = buf[len(sentence):]
+            try:
+                audio = tts.synthesize(sentence)
+            except Exception:  # noqa: BLE001 单句 TTS 失败:跳过该句音频,文本不受影响
+                logger.exception("TTS 句合成失败(session_id=%s)", session.id)
+                continue
+            yield _sse(
+                "audio_chunk",
+                {
+                    "seq": audio_seq,
+                    "text": sentence,
+                    "data": base64.b64encode(audio).decode("ascii"),
+                    "format": "mp3",
+                },
+            )
+            audio_seq += 1
     reply = "".join(chunks).strip()
+    # 流结束:尾部未到句界的残余也合成语音(保证整段可朗读)
+    if voice_on and buf.strip():
+        try:
+            audio = tts.synthesize(buf)
+        except Exception:  # noqa: BLE001
+            audio = None
+        if audio:
+            yield _sse(
+                "audio_chunk",
+                {
+                    "seq": audio_seq,
+                    "text": buf,
+                    "data": base64.b64encode(audio).decode("ascii"),
+                    "format": "mp3",
+                },
+            )
 
     # 6) 助手消息落库 + 记忆更新(工具卡片随消息持久化,历史回放可见)
     db.add(
@@ -169,15 +224,6 @@ def chat_stream(
     )
     memory.update(session, _load_messages(db, session.id), user.id, db)
     db.commit()
-
-    # 语音扩展:voice_reply=True 时,在文本基础上附加整段 TTS(流尾 audio_url 事件)
-    if body.voice_reply and reply:
-        try:
-            audio = tts.synthesize_with_url(reply)
-            yield _sse("audio_url", {"url": audio["url"], "text": reply})
-        except Exception:  # noqa: BLE001 TTS 不可用 → 降级,不影响文本
-            logger.exception("TTS 合成失败(session_id=%s)", session.id)
-            yield _sse("audio_url", {"url": None, "text": reply, "degraded": True})
 
     # 7) 会话结束 → 情绪日记闭环
     if body.end_session:
