@@ -100,12 +100,12 @@ POST /chat(SSE)
 **相关模块**:`ai/rag/`(ingest / chunking / search)、`adapters/embedding.py`、`ai/tools/search_knowledge.py`、`scripts/ingest_knowledge.py`。
 **图**:`mindharbor-rag-sequence.mmd`。
 
-### 4.4 语音陪伴功能
+### 4.4 语音陪伴(HTTP 语音桥接)
 
-**职责**:Agent 将适合语音安抚的回复合成为语音推给前端;TTS 不可用降级为文字卡片,不阻塞主流程。
+**职责**:语音为独立模块(对标 AI 面试官"语音桥接"功能点):浏览器 ASR 出文本 → 确认 → HTTP 桥接接口进入对话闭环,后端返回流式文本与音频 URL。
 
-**相关模块**:`ai/tools/speak_voice.py`、`adapters/tts.py`(阿里云百炼 TTS)。
-**说明**:与"语音面试"不同,本项目后端不处理 ASR;语音只需播放陪伴语,前端音视频播放 `tool_card` 驱动。
+**相关模块**:`api/voice.py`(`POST /voice/bridge/chat`,SSE)、`adapters/tts.py`(`synthesize_with_url` 整段合成)。
+**说明**:不采用后端 ASR/实时双向流;文本 `text` 事件流式先行,整段 TTS 合成后 `audio_url{url,text}` 在流尾返回,前端 `<audio>` 播放 URL——文本与语音不冲突、不互阻塞。降级:TT 不可用 → `audio_url{url:null,degraded:true}`;风险命中返回风险模板(无音频)。协议见 `docs/voice-bridge-protocol.md`。
 
 ### 4.5 评估与咨询师端报告功能
 
@@ -246,7 +246,7 @@ flowchart LR
 | `memory.py` | 短期窗口 / 会话摘要 / 长期画像 | 隐私约束:敏感信息不进长期记忆 |
 | `journal.py` | 日记 + 情绪记录生成 | 与情绪识别共用一次模型输出,`journal_id` 关联 |
 | `agent.py` | function-calling 循环(≤MAX_TOOL_ROUNDS) | 工具注册表 `ai/tools/registry.py`;单轮可多工具 |
-| `tools/ ×7` | record_emotion / search_knowledge / generate_breathing / create_reminder / recommend_resources / query_emotion_stats(SQL Agent)/ speak_voice | 结果以 `tool_card` 事件返回前端 |
+| `tools/ ×6` | record_emotion / search_knowledge / generate_breathing / create_reminder / recommend_resources / query_emotion_stats(SQL Agent)| 结果以 `tool_card` 事件返回前端(语音为独立桥接模块,不属于工具) |
 | `counselor*.py` | 咨询师专属 Agent(3 工具) | 独立注册表,与学生端隔离 |
 | `rag/` | 入库管道 + 在线检索 | 父子分块 + RRF 混合检索;检索空 → 明示不编造 |
 

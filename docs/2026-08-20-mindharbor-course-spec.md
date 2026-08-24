@@ -186,11 +186,11 @@
 
 **输出**：拼接后的对话上下文（含知识库引用、长期画像）注入系统提示词。
 
-#### 3.5.3 Agent 工具循环（7 项能力）
+#### 3.5.3 Agent 工具循环（6 项能力）
 
 **功能描述**：`ai/agent.py` 的 function-calling 循环让 LLM 在对话中自主调用工具，结果以卡片形式返回前端。
 
-**处理**：消息 → LLM 决策（`chat_with_tools`）→ 执行 `handler` → 结果回填 → 最多 `MAX_TOOL_ROUNDS` 轮，直至 LLM 输出最终回复；单轮可调用多个工具（如 `search_knowledge` + `speak_voice` 组合）。
+**处理**：消息 → LLM 决策（`chat_with_tools`）→ 执行 `handler` → 结果回填 → 最多 `MAX_TOOL_ROUNDS` 轮，直至 LLM 输出最终回复；单轮可调用多个工具（如 `search_knowledge` + `generate_breathing` 组合）。
 
 **工具清单**：
 
@@ -202,7 +202,6 @@
 | `create_reminder` | 创建日程提醒 | 提醒确认卡片 |
 | `recommend_resources` | 按情绪/需求推荐心理资源 | 资源卡片 |
 | `query_emotion_stats` | **SQL Agent**：自然语言 → SELECT → 只读执行 → 中文解释 | 情绪统计卡片 |
-| `speak_voice` | 流式语音陪伴（TTS） | 音频播放卡片 |
 
 **SQL Agent 安全策略（对应面试题评分逻辑的可信性要求）**：
 - LLM 仅负责把自然语言转成 SELECT（temperature=0）；
@@ -212,13 +211,17 @@
 
 **输出**：SSE `tool_card` 事件流 + 最终 `text` 回复。
 
-#### 3.5.4 语音陪伴
+#### 3.5.4 语音陪伴（HTTP 语音桥接）
 
-**功能描述**：当回复内容适合语音陪伴时，Agent 调用 `speak_voice` 将安抚语合成为语音。
+**功能描述**：语音能力为**独立模块**（对标 AI 面试官“语音桥接/语音面试”功能点）：语音识别在**浏览器**完成，识别文本展示供用户确认后，经 HTTP 桥接接口进入后端对话闭环，后端返回流式文本与音频 URL。
 
-**处理**：TTS 经 `adapters/tts.py` 统一接入（阿里云百炼）；当前实现为**文字卡片 + 音频**，若 TTS 服务不可用则**降级为文字卡片**，不阻塞主流程。
+**处理**：
+- 通道：`POST /voice/bridge/chat`（SSE）：流式 `text` 事件先行渲染 → 文本完成后 TTS 整段合成 → 流尾 `audio_url{url,text}` 事件 → 前端 `<audio src>` 边下边播（文本与语音不冲突）；
+- 会话/风险/记忆/Agent/日记闭环与文字聊天共用；`session_id` 复用本人 active 会话；
+- `end_session=true` 生成情绪日记并下发 `journal` 事件；
+- 降级：TTS 不可用 → `audio_url{url:null,degraded:true}`，文本照常；风险命中按风险模板返回（无音频）。
 
-**对应接口**：`POST /chat`（SSE 内 `speak_voice` 卡片）。
+**对应接口**：`POST /voice/bridge/chat`，协议见 `docs/voice-bridge-protocol.md`。
 
 ### 3.6 收藏、提醒、练习与历史
 
@@ -493,7 +496,7 @@ sequenceDiagram
     loop function-calling 循环
         AG->>LLM: chat_with_tools(messages, tools)
         alt LLM 返回 tool_call
-            AG->>KS: search_knowledge / record_emotion / generate_breathing / speak_voice ...
+            AG->>KS: search_knowledge / record_emotion / generate_breathing ...
             KS->>PG: 查询/写入 emotions 等
             KS-->>AG: 结构化工具结果
             AG-->>FE: SSE tool_card 事件
