@@ -5,7 +5,6 @@
  * |-------------------------|------------------|------|
  * | search_knowledge        | knowledge        | 参考资料(折叠) |
  * | recommend_resources     | resources        | 推荐资源 |
- * | speak_voice             | voice            | 语音陪伴 |
  * | generate_breathing      | breathing        | 478 呼吸 → 弹层 |
  * | create_reminder         | reminder         | 日程提醒 + 本机定时 |
  * | dialogue 风险筛查       | crisis           | 危机热线 |
@@ -13,7 +12,7 @@
  *
  * 工具执行失败 `{ error }` 不会进入卡片列表。
  */
-import { BookOpen, Bell, Headphones, Leaf, Sparkles } from 'lucide-react'
+import { BookOpen, Bell, Leaf, Sparkles } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getBreathingExercise } from '../data/breathing'
@@ -35,15 +34,6 @@ function knowledgeHits(p: ToolCardPayload) {
     return p.sources as { title: string; text: string }[]
   }
   return []
-}
-
-function voiceSrc(p: ToolCardPayload): string | null {
-  if (typeof p.url === 'string' && p.url) return p.url
-  if (typeof p.audio_b64 === 'string' && p.audio_b64) {
-    const format = typeof p.format === 'string' ? p.format : 'mp3'
-    return `data:audio/${format};base64,${p.audio_b64}`
-  }
-  return null
 }
 
 function KnowledgeCard({ payload }: { payload: ToolCardPayload }) {
@@ -110,29 +100,6 @@ function ResourcesCard({ payload }: { payload: ToolCardPayload }) {
           </li>
         ))}
       </ul>
-    </div>
-  )
-}
-
-function VoiceCard({ payload }: { payload: ToolCardPayload }) {
-  const src = voiceSrc(payload)
-  const text = typeof payload.text === 'string' ? payload.text : ''
-  const degraded = payload.degraded === true
-
-  return (
-    <div className="tool-card tool-card--voice">
-      <h4 className="tool-card__heading">
-        <Headphones size={14} aria-hidden />
-        语音陪伴
-      </h4>
-      {text ? <p className="tool-card__voice-text">{text}</p> : null}
-      {src ? (
-        <audio className="tool-card__audio" controls preload="none" src={src}>
-          你的浏览器不支持音频播放。
-        </audio>
-      ) : degraded ? (
-        <p className="tool-card__hint">{typeof payload.note === 'string' ? payload.note : '语音暂不可用'}</p>
-      ) : null}
     </div>
   )
 }
@@ -260,9 +227,6 @@ function renderToolPayload(
   }
   if (p.type === 'resources') {
     return <ResourcesCard key={`resources-${idx}`} payload={p} />
-  }
-  if (p.type === 'voice') {
-    return <VoiceCard key={`voice-${idx}`} payload={p} />
   }
   if (p.type === 'crisis') {
     return <CrisisCard key={`crisis-${idx}`} payload={p} />

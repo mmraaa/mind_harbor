@@ -5,13 +5,14 @@
 格式化成 `data: {json}\n\n` 由 `app/api/chat.py` 负责。
 """
 
+import base64
 import logging
 from typing import Iterator
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.adapters import llm
+from app.adapters import llm, tts
 from app.ai import agent, emotion, journal, memory
 from app.ai.emotion import RISK_REPLY_TEMPLATE
 from app.models.emotion import Emotion, Journal
@@ -26,7 +27,7 @@ GENERIC_ERROR_MSG = "生成过程出现异常,请稍后重试"
 BLANK_CONTENT_MSG = "消息内容不能为空"
 
 SYSTEM_PROMPT = (
-    "你是 MindHarbor,面向大学生的 AI 心理咨询与情感陪伴助手。"
+    "你是 MindHarbor 的小屿,面向大学生的 AI 心理咨询与情感陪伴助手。"
     "请用温暖、共情、不评判的语气陪伴用户,用中文回应。"
     "涉及心理危机(自伤/自杀念头)时,"
     "务必引导用户联系危机干预热线 400-161-9995 或校内心理咨询中心。"
@@ -39,6 +40,20 @@ RISK_CARD = {
     "hotline": "400-161-9995",
     "note": "心理危机干预热线 / 校内心理咨询中心(工作时间可直接预约)",
 }
+
+# —— 语音流式(句子级 TTS)切句规则 ——
+_SENT_PUNCT = ("。", "！", "？", "!", "?", "；", ";", "\n")
+_MAX_SENT_LEN = 20
+
+
+def _take_first_sentence(buf: str) -> str | None:
+    """返回缓冲区首个完整句(以标点或达长度上限为界);未完整返回 None。"""
+    for i, ch in enumerate(buf):
+        if ch in _SENT_PUNCT:
+            return buf[: i + 1]
+    if len(buf) >= _MAX_SENT_LEN:
+        return buf[:_MAX_SENT_LEN]
+    return None
 
 
 def get_or_create_session(db: Session, user: User, session_id: int | None) -> ChatSession:
@@ -68,6 +83,22 @@ def _load_messages(db: Session, session_id: int) -> list[Message]:
 
 def _sse(evt_type: str, payload: dict) -> dict:
     return {"type": evt_type, "payload": payload}
+
+
+def stream_reply(*, content: str, context: str = "") -> Iterator[str]:
+    """LLM 流式回复增量(净文本片段)。供 HTTP SSE 与语音通道共用。
+
+    Args:
+        content: 用户本轮消息。
+        context: 已拼装上下文(记忆 + Agent 工具结果),可空。
+
+    Returns:
+        Iterator[str]: 逐 delta 的回复文本增量;调用方负责拼接/落库。
+    """
+    prompt = SYSTEM_PROMPT + ("\n\n" + context if context else "")
+    yield from llm.stream_chat(
+        [{"role": "system", "content": prompt}, {"role": "user", "content": content}]
+    )
 
 
 def chat_stream(
@@ -134,15 +165,52 @@ def chat_stream(
         context = context + "\n\n" + tool_context
     tool_cards = tool_cards or None  # 供第 6 步持久化到 Message
 
-    # 4) LLM 流式生成 + 增量 text 事件
-    prompt = SYSTEM_PROMPT + "\n\n" + context
-    chunks = []
-    for delta in llm.stream_chat(
-        [{"role": "system", "content": prompt}, {"role": "user", "content": content}]
-    ):
+    # 4) LLM 流式生成 + 增量 text 事件(复用 stream_reply,语音通道同入口)
+    #    语音扩展:voice_reply=True 时按句流式 TTS,audio_chunk 紧跟对应文本句 → “语音跟得上文本”
+    voice_on = bool(body.voice_reply)
+    chunks: list[str] = []
+    buf = ""
+    audio_seq = 0
+    for delta in stream_reply(content=content, context=context):
         chunks.append(delta)
         yield _sse("text", {"content": delta})
+        if not voice_on:
+            continue
+        buf += delta
+        while (sentence := _take_first_sentence(buf)) is not None:
+            buf = buf[len(sentence):]
+            try:
+                audio = tts.synthesize(sentence)
+            except Exception:  # noqa: BLE001 单句 TTS 失败:跳过该句音频,文本不受影响
+                logger.exception("TTS 句合成失败(session_id=%s)", session.id)
+                continue
+            yield _sse(
+                "audio_chunk",
+                {
+                    "seq": audio_seq,
+                    "text": sentence,
+                    "data": base64.b64encode(audio).decode("ascii"),
+                    "format": "mp3",
+                },
+            )
+            audio_seq += 1
     reply = "".join(chunks).strip()
+    # 流结束:尾部未到句界的残余也合成语音(保证整段可朗读)
+    if voice_on and buf.strip():
+        try:
+            audio = tts.synthesize(buf)
+        except Exception:  # noqa: BLE001
+            audio = None
+        if audio:
+            yield _sse(
+                "audio_chunk",
+                {
+                    "seq": audio_seq,
+                    "text": buf,
+                    "data": base64.b64encode(audio).decode("ascii"),
+                    "format": "mp3",
+                },
+            )
 
     # 6) 助手消息落库 + 记忆更新(工具卡片随消息持久化,历史回放可见)
     db.add(

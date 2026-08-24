@@ -33,6 +33,59 @@
 
 ## 已完成
 
+### 2026-08-24 · 学生端语音回复 + 浏览器 ASR + 情绪超时回落
+
+- **完成内容**:学生聊天页对接协议 v4:`voice_reply` 开关(sessionStorage)、浏览器 Web Speech 写入同一输入框(连续识别累加 finals+interim)、`audio_chunk` 按 seq 排队播放。去掉旧 `speak_voice` 卡片。情绪识别 LLM 超时/网络失败回落默认 calm,不再打断整轮 SSE。
+- **涉及文件**:`frontend/src/pages/student/ChatPage.tsx`、`frontend/src/api/chat.ts`、`frontend/src/lib/speechInput.ts`、`frontend/src/lib/audioChunkPlayer.ts`、`frontend/src/components/ToolCards.tsx`、`frontend/src/styles/app.css`;`backend/app/ai/emotion.py`、`backend/tests/test_emotion.py`。
+- **测试结果**:情绪超时回落用例已加;`pytest backend/tests/test_emotion.py` 此前通过。前端未跑 `pnpm build`(本次为提交现有改动)。
+- **commit**:本提交。
+- **评审结论**:未评审。
+- **遗留问题**:阿里云 TTS 个别句 `ret=415` 仍会跳过该句音频;切句过碎/失败重试未做。
+
+### 2026-08-24 · 语音收敛为 /chat 扩展开关(voice_reply → 句子级 audio_chunk)
+
+- **决策(用户)**:语音定位为**扩展功能**——开启后 AI 在文本输出基础上附带语音;语音输入由浏览器 ASR 转文本;改动落在既有 `POST /chat` 上;且**语音要跟得上文本(句子级流式),不是文本整段结束才返回整段 URL**。
+- **实现(TDD,3 用例)**:`ChatRequest` 新增 `voice_reply`(默认 false);`dialogue.chat_stream` 在文本流内按标点/长度切句,句完整即 `tts.synthesize` 合成该句,紧跟对应 `text` 事件发出 `audio_chunk{seq,text,data(base64 mp3),format}`;流结束未到句界的尾句同样合成;失败句跳过音频、文本不受影响;风险分支不合成。删除整段 URL 分支(`audio_url`)。删除桥接 `app/api/voice.py`/`test_voice_bridge.py`/`docs/voice-bridge-protocol.md`;`main` 移除 voice 挂载。
+- **文件**:`backend/app/schemas/chat.py`、`backend/app/ai/dialogue.py`(import tts/base64、`_take_first_sentence`、流内切句合成)、`backend/app/main.py`(还原)、`backend/tests/test_chat_voice.py`(流式语义:插件 interleave/缺省无 chunk/失败句跳过);文档 `docs/voice-chat-protocol.md`(v4 句子级流式)、规格 §3.5.4、架构 §4.4、AGENTS.md。
+- **测试结果**:流式语音用例 `3 passed`,`dialogue+student` 回归通过;**全量未跑**(用户指示先更新文档;Milvus 容器此前已恢复,上次全量 129 passed)。
+- **commit**:feat+docs 提交(本批 `7673f4b/8f06c3e` 为 v3 整段 URL;v4 句子级流式代码与文档待提交)。
+- **评审结论**:未评审。
+- **遗留问题**:前端语音开关 + 浏览器 ASR 确认 UI + `audio_chunk` 按 seq 顺序播放队列(前端团队);TTS 为句级串行合成,后续可并行化进一步降低句间延迟。
+
+### 2026-08-24 · 语音助手返工为 HTTP 桥接(浏览器 ASR;git 回退弃用 WS 双向流)
+
+- **决策(用户)**:放弃"后端 WS 双向流 + 后端 ASR",改对标 AI 面试官"语音桥接"功能点——**浏览器 ASR 出文本 → 前端展示确认 → POST 桥接接口 → 后端返回流式文本 + 音频 URL → 前端播放**;优化"返回文本与 URL 流式不冲突"。
+- **实现方式(git 回退)**:`git reset --hard e44961d` 丢弃语音 WS 实现提交(`47b08b9` 回合编排、`651ccdf` WS 路由、`0e6a6fa` 会话闭环、`7ffbbb5` 协议文档,及 `adapters/asr.py`/`tts_v2.py`/`ai/voice.py`/相关测试);保留 Task0(移除 speak_voice,工具 7→6)与 Task3(`dialogue.stream_reply`)。
+- **新实现(TDD,4 用例)**:`POST /api/v1/voice/bridge/chat`(SSE)——`text` 事件流式先行 → 文本完成后 `tts.synthesize_with_url` 整段合成 → 流尾 `audio_url{url,text}`;会话归属/风险/记忆/Agent/日记闭环复用 dialogue;`end_session` → journal + 会话 closed。文件:`backend/app/api/voice.py`(重写为 HTTP)、`backend/tests/test_voice_bridge.py`(新增)。
+- **文档**:`docs/voice-bridge-protocol.md`(新增,前端交接;注明与 v1 WS 的差异)、规格书 §3.5.3 工具表 7→6、§3.5.4 改 HTTP 桥接、架构 §4.4/§6.4、AGENTS.md 同步。
+- **测试结果**:桥接 `4 passed`;全量 `125 passed + 9 errors`(9 个均为 `test_rag` 的 Milvus 测试,pymilvus 连接失败——**Milvus 容器未运行**,环境问题与本次改动无关;启动 Docker/Milvus 后应恢复全绿)。
+- **commit**:`25a6539`(feat 桥接)、`7cecae9`(docs 桥接)。
+- **评审结论**:未评审。
+- **遗留问题**:① 需启动 Docker/Milvus 后重跑全量确认 9 个 rag 测试;② 前端语音页:浏览器 ASR + 文本确认 UI + `audio_url` 播放(前端团队);③ TTS 为整段合成返回 URL,未做流式块边推边播(如需再议)。
+
+### 2026-08-21 · 撰写《架构说明》(对标软件架构文档模板)
+
+- **完成内容**:按架构文档模板(简介 → 构架表示方式 → 目标约束 → 关键功能视图 → 层次结构 → 逻辑视图)编写 MindHarbor 架构说明,与实现一一对应:5 个关键功能(情绪识别与日记底座 / AI 陪伴对话 / RAG / 语音陪伴 / 咨询师评估 = 对应模板的简历解析·AI 对话·RAG·语音面试·评估报告);层次结构 mermaid 图(表现→接口→商业→AI 编排→适配→数据);逻辑视图 6 层(用户服务层即三角色前端 / 商业服务层即 services+admin_module / AI 能力服务层 / 数据服务层 PG+Milvus / 部署视图)。
+- **涉及文件**:`docs/2026-08-21-mindharbor-architecture.md`(新增;引用 `docs/diagrams/*.mmd`)
+- **测试结果**:文档任务,无代码改动
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:无;图嵌入沿用 Mermaid。
+
+### 2026-08-21 · 绘制系统用例图与序列图(Mermaid)
+
+- **完成内容**:放弃 drawio 方案(WSL2 无显示服务,U 依赖 X 渲染不可用),改用 Mermaid 绘制系统图,共 5 张,置于 `docs/diagrams/`。
+  - `mindharbor-usecase.mmd` 用例图(学生/咨询师/管理员三角色 × 用例,聊天 `«include»` 工具与「情绪识别·风险筛查·上下文记忆」)
+  - `mindharbor-auth-sequence.mmd` 认证序列(注册/登录 → bcrypt → JWT 签发 → `get_current_user`/`require_roles` 的 401/403 守卫)
+  - `mindharbor-chat-sequence.mmd` 聊天闭环序列(情绪/风险 → 记忆上下文 → Agent function-calling 循环 → SSE 流式回复 → 结束生成日记/情绪落库 → 咨询师端趋势)
+  - `mindharbor-sqlagent-sequence.mmd` SQL Agent 安全序列(自然语言 → SELECT → sqlglot 单条/SELECT/白名单校验 → 注入 user_id+LIMIT + `SET TRANSACTION READ ONLY` → 中文解释)
+  - `mindharbor-rag-sequence.mmd` RAG 混合检索序列(关键词 ILIKE + 向量检索 → RRF 融合 → 父块回查 → 引用来源/防幻觉兜底)
+- **涉及文件**:`docs/diagrams/*.mmd`(5 张新增);`docs/2026-08-20-mindharbor-course-spec.md`(追加「附录 C:系统设计图」,内嵌 mermaid 代码块)
+- **测试结果**:文档/图表任务,无代码改动;drawio 文件按用户决定废弃(已移除)
+- **commit**:未提交
+- **评审结论**:未评审
+- **遗留问题**:无。
+
 ### 2026-08-21 · 画作审核连接验证与 Token 统计
 
 - **完成内容**:画作审核管理端测试复用真实 DashScope 多模态路径；区分接口契约可达、鉴权/路径无效、限流和上游异常；新增 `POST /api/v1/admin/api-configs/doodle_review/validate`，使用固定小图片执行明确的模型验证；解析 DashScope/OpenAI 兼容格式的用量字段，并按一次用户请求统计成功/失败。

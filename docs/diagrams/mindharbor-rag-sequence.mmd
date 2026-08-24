@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    participant U as 用户(学生 / 咨询师)
+    participant AG as Agent(search_knowledge)
+    participant KW as 关键词提取
+    participant EMB as Embedding 适配
+    participant MV as Milvus v3(向量库)
+    participant PG as PostgreSQL(knowledge_chunks)
+    participant CTX as 父子分块(父块回查)
+    participant LLM as 云端 LLM
+    participant FE as 前端
+
+    Note over U,FE: 问题 → 关键词+向量双路检索 → RRF 融合 → 父块上下文 → 引用生成
+
+    U->>AG: 提问(如「考试焦虑怎么办」)
+    AG->>KW: 提取连续 CJK/英文关键词
+    KW->>PG: ILIKE 关键词精确匹配(子块)
+    PG-->>KW: 关键词命中子块
+    AG->>EMB: embed(query)
+    EMB-->>AG: query 向量
+    AG->>MV: 余弦 top-k 向量检索
+    MV-->>AG: 候选子块(向量路)
+
+    AG->>AG: Reciprocal Rank Fusion 融合排序<br/>(关键词加权 1.5,同分关键词优先)
+    AG->>CTX: 命中子块 → 回查父块完整文本(含标题语境)
+    CTX-->>AG: ChunkHit.context(父块文本)
+
+    alt 检索结果为空
+        AG-->>FE: 明确回复「资料库暂未收录该话题,建议预约校内咨询」(不编造)
+    else 有命中
+        AG->>LLM: 注入引用上下文生成回答(带来源)
+        LLM-->>AG: 带引用文本
+        AG-->>FE: SSE 文本 + 「参考来源」卡片
+    end

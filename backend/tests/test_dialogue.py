@@ -381,3 +381,11 @@ def test_memory_update_extracts_facts_and_compresses_summary(client, seed_user, 
     assert any("我叫小明" in f.content for f in facts)
     db.refresh(s)
     assert s.summary == "测试摘要"  # 超过阈值 → LLM 摘要压缩(假 complete_text)
+
+
+def test_stream_reply_yields_llm_deltas(patch_ai):
+    """stream_reply 为对话/语音共用的回复流入口:产出 LLM 流式增量(净文本)。"""
+    from app.ai import dialogue
+
+    deltas = list(dialogue.stream_reply(content="你好", context="上下文"))
+    assert deltas == ["我", "理解", "你的焦虑"]

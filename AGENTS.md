@@ -19,7 +19,7 @@ MindHarbor — 面向大学生的 AI 心理咨询与情感陪伴助手课程项�
   - `core/` 配置/安全/数据库/日志(脚手架已就绪)
   - `api/` 路由(`chat`、`auth`、`admin/`、`counselor/` 等)
   - `services/` 业务服务层
-  - `ai/` 对话 `dialogue.py`、情绪 `emotion.py`、日记 `journal.py`、记忆 `memory.py`、Agent `agent.py` + `tools/`(7 工具)+ `rag/`(ingest/search);**咨询师端 Agent**:`counselor.py`/`counselor_tools.py`(独立工具集:学生情绪统计 SQL、学生日记检索、异常学生识别)
+  - `ai/` 对话 `dialogue.py`、情绪 `emotion.py`、日记 `journal.py`、记忆 `memory.py`、Agent `agent.py` + `tools/`(6 工具)+ `rag/`(ingest/search);**语音为 chat 扩展开关**(`POST /chat` 携带 `voice_reply:true` → 回复按句切分,`audio_chunk{seq,text,data}` 紧随对应文本句(句子级流式),浏览器 ASR 出文本,见 `docs/voice-chat-protocol.md`);**咨询师端 Agent**:`counselor.py`/`counselor_tools.py`(独立工具集:学生情绪统计 SQL、学生日记检索、异常学生识别)
   - `models/` SQLAlchemy、`schemas/` Pydantic、`adapters/` 模型适配层
 - 数据:PostgreSQL(业务数据)+ Milvus v3.0.0(向量检索,本机 Docker 端口 19530);chunk 元数据存 PG、向量存 Milvus collection(`knowledge_chunks`,按 chunk id 关联);`journals`↔`emotions` 由 `journal_id` 关联,情绪记录只在 LLM 生成日记时产出。
 

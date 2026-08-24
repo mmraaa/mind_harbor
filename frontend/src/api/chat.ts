@@ -59,12 +59,9 @@ export type ToolCardPayload = {
   sources?: KnowledgeHit[]
   /** recommend_resources */
   resources?: ResourceItem[]
-  /** speak_voice */
   text?: string
   url?: string
-  audio_b64?: string | null
   format?: string
-  degraded?: boolean
   note?: string
   /** crisis (dialogue 风险筛查,非 Agent 工具) */
   hotline?: string
@@ -98,10 +95,18 @@ export type JournalPayload = {
   }
 }
 
+export type AudioChunkPayload = {
+  seq: number
+  text: string
+  data: string
+  format?: string
+}
+
 export type ChatStreamEvent =
   | { type: 'text'; payload: { content: string } }
   | { type: 'tool_card'; payload: ToolCardPayload }
   | { type: 'journal'; payload: JournalPayload }
+  | { type: 'audio_chunk'; payload: AudioChunkPayload }
   | { type: 'error'; payload: { message?: string; detail?: string } }
   | { type: string; payload: Record<string, unknown> }
 
@@ -148,15 +153,18 @@ export type StreamChatArgs = {
   sessionId?: number | null
   /** 仍支持 ChatRequest.end_session；优先推荐独立 endSession API */
   endSession?: boolean
+  /** 句子级流式语音：与后端 ChatRequest.voice_reply 对齐 */
+  voiceReply?: boolean
   signal?: AbortSignal
   onEvent: (event: ChatStreamEvent) => void
 }
 
-/** POST /chat → SSE: text / tool_card / journal / error */
+/** POST /chat → SSE: text / tool_card / journal / audio_chunk / error */
 export async function streamChat({
   content,
   sessionId = null,
   endSession = false,
+  voiceReply = false,
   signal,
   onEvent,
 }: StreamChatArgs): Promise<void> {
@@ -172,6 +180,7 @@ export async function streamChat({
       content,
       session_id: sessionId ?? null,
       end_session: endSession,
+      voice_reply: voiceReply,
     }),
     signal,
   })

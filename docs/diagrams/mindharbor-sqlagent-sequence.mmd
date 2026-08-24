@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant U as 用户(学生 / 咨询师)
+    participant AG as Agent 对话
+    participant LLM as 云端 LLM
+    participant VL as sqlglot 校验层
+    participant DB as PostgreSQL<br/>(SET TRANSACTION READ ONLY)
+
+    Note over U,DB: 自然语言 → SELECT → AST 校验 → 数据隔离/只读执行 → 中文解释
+
+    U->>AG: 问题「我最近的情绪分布如何」/「学生焦虑情况」
+    AG->>LLM: SQL_GEN_PROMPT + 问题 → 生成 SELECT(temperature=0)
+    LLM-->>AG: 一句 SELECT(只允许查白名单表)
+
+    AG->>VL: 校验:单条语句 + 必须 SELECT + 表白白名单
+    alt 不合法(多语句 / DML / 非白名单表)
+        VL-->>AG: ValueError → 友好错误 tool_card(不执行)
+    else 合法
+        VL->>DB: 学生端注入 WHERE user_id = <uid>;强制 LIMIT 100<br/>咨询师端仅 LIMIT(可查任意/全体)
+        DB->>DB: SET TRANSACTION READ ONLY(物理拒写)
+        DB-->>VL: 查询结果(headers/rows,Decimal→float 等可序列化处理)
+        VL-->>AG: 结构化行数据
+        AG->>LLM: EXPLAIN_PROMPT + 结果 → 中文解释(≤3 句)
+        LLM-->>AG: 解释文本
+    end
+
+    AG-->>U: SSE tool_card(统计表/解释) + text 总结

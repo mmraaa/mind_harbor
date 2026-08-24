@@ -325,6 +325,8 @@
 .text-area {
   resize: vertical;
   min-height: 88px;
+  max-height: min(168px, 30vh);
+  overflow-y: auto;
 }
 
 .text-input:focus,
@@ -647,13 +649,6 @@
   border-color: rgba(111, 143, 124, 0.28);
 }
 
-.tool-card--voice {
-  background:
-    radial-gradient(circle at 8% 18%, rgba(142, 175, 181, 0.22), transparent 45%),
-    var(--sky-pale);
-  border-color: rgba(142, 175, 181, 0.42);
-}
-
 .tool-card--crisis {
   background: var(--danger-pale);
   border-color: rgba(165, 77, 69, 0.35);
@@ -778,18 +773,6 @@
   outline-offset: 2px;
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-
-.tool-card__voice-text {
-  margin: 0 0 10px;
-  color: var(--ink-soft);
-  font-size: 0.88rem;
-  line-height: 1.65;
-}
-
-.tool-card__audio {
-  width: 100%;
-  height: 36px;
 }
 
 .tool-card--breathing {
@@ -1646,14 +1629,48 @@ a.tool-card__breathing-cta {
 
 .composer {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: auto 1fr auto;
   gap: 10px;
   align-items: end;
 }
 
 .composer .text-area {
   min-height: 56px;
+  max-height: min(168px, 30vh);
   border-radius: 16px;
+  resize: vertical;
+  overflow-y: auto;
+  field-sizing: fixed;
+}
+
+.composer .text-area--listening {
+  border-color: var(--sage);
+  box-shadow: inset 0 0 0 1px rgba(111, 143, 124, 0.35);
+}
+
+.composer-mic {
+  min-width: 44px;
+  padding: 0 12px;
+}
+
+.voice-reply-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 720px) {
+  .composer {
+    grid-template-columns: auto 1fr;
+  }
+
+  .composer .primary-button {
+    grid-column: 1 / -1;
+  }
 }
 
 /* —— Practice / harbor tide —— */

@@ -1,0 +1,56 @@
+sequenceDiagram
+    autonumber
+    participant FE as 学生端前端(SSE)
+    participant API as FastAPI /chat
+    participant Dlg as dialogue 控制器
+    participant Emo as 情绪识别 emotion
+    participant Mem as 记忆管理 memory
+    participant AG as Agent(工具循环)
+    participant KS as 工具集 / RAG
+    participant LLM as 云端 LLM
+    participant PG as PostgreSQL
+    participant CO as 咨询师端
+
+    Note over FE,PG: 文字聊天 → 情绪识别/风险筛查 → 记忆上下文 → 生成回复 → 情绪日记闭环
+
+    FE->>API: POST /chat {content, session_id?, end_session}
+    API->>Dlg: chat_stream(user, session, msg)
+
+    Dlg->>Emo: 情绪识别(结构化 JSON)
+    Emo->>LLM: complete_json(情绪类别/强度/压力来源/支持需求)
+    LLM-->>Emo: {category, intensity, stress_source, support_need}
+    Emo-->>Dlg: 情绪结果
+
+    alt 命中风险关键词/LLM 判定
+        Dlg-->>FE: SSE 风险安抚模板(热线/校内渠道)+ 会话 risk_level=high 落库
+    end
+
+    Dlg->>Mem: assemble_context(短期窗口 + 会话摘要 + 长期画像)
+    Mem-->>Dlg: 拼接后的对话上下文
+
+    Dlg->>AG: run(工具决策循环)
+    loop function-calling 循环
+        AG->>LLM: chat_with_tools(messages, tools)
+        alt LLM 返回 tool_call
+            AG->>KS: search_knowledge / record_emotion / generate_breathing / speak_voice ...
+            KS->>PG: 查询/写入 emotions 等
+            KS-->>AG: 结构化工具结果
+            AG-->>FE: SSE tool_card 事件
+        else LLM 返回回复文本
+            LLM-->>AG: 流式文本
+            AG-->>FE: SSE text 事件(逐 token)
+        end
+    end
+
+    opt end_session=true(或手动结束)
+        Dlg->>Mem: 更新短期窗口与会话摘要 → 沉淀长期画像
+        Note over Dlg,PG: LLM 生成情绪日记(摘要 + 结构化情绪,与情绪识别共用结构)
+        Dlg->>LLM: journal.generate(会话上下文)
+        LLM-->>Dlg: 日记摘要 / mood_score / 情绪记录
+        Dlg->>PG: 写入 journals + emotions(journal_id / session_id 关联)
+        Dlg-->>FE: SSE journal 事件(日记卡片)
+    end
+
+    Note over CO,PG: 咨询师端查看学生心理
+    CO->>PG: GET /counselor/stats/... 聚合 emotions → 趋势/档案
+    PG-->>CO: 情绪分布 / 学生档案 / 风险标记

@@ -1,4 +1,4 @@
-import { Bookmark, BookmarkCheck } from 'lucide-react'
+import { Bookmark, BookmarkCheck, Mic, Volume2 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { addFavorite, removeFavorite } from '../../api/favorites'
 import {
@@ -6,6 +6,7 @@ import {
   listMessages,
   listSessionsPage,
   streamChat,
+  type AudioChunkPayload,
   type JournalPayload,
   type ToolCardPayload,
 } from '../../api/chat'
@@ -13,7 +14,11 @@ import { getErrorMessage } from '../../api/client'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
 import { BreathingModal } from '../../components/BreathingModal'
 import { ToolCards } from '../../components/ToolCards'
+import { SentenceAudioQueue } from '../../lib/audioChunkPlayer'
+import { speechRecognitionSupported, startSpeechRecognition } from '../../lib/speechInput'
 import { toUiMessages, useChatStore, type UiMessage } from '../../stores/chat'
+
+const VOICE_REPLY_KEY = 'mh_voice_reply'
 
 const SUGGESTIONS = ['最近考试压力很大，睡不好', '想学一个两分钟的呼吸练习', '校园心理咨询怎么预约？']
 
@@ -36,9 +41,20 @@ export default function ChatPage() {
   const [draft, setDraft] = useState('')
   const [ending, setEnding] = useState(false)
   const [breathingModalOpen, setBreathingModalOpen] = useState(false)
+  const [voiceReply, setVoiceReply] = useState(() => {
+    try {
+      return sessionStorage.getItem(VOICE_REPLY_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const [listening, setListening] = useState(false)
   const streamRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const stickToBottom = useRef(true)
+  const playerRef = useRef(new SentenceAudioQueue())
+  const stopAsrRef = useRef<(() => void) | null>(null)
+  const asrPrefixRef = useRef('')
 
   const readOnly = sessionStatus === 'closed'
 
@@ -51,6 +67,21 @@ export default function ChatPage() {
   useEffect(() => {
     void hydrate()
   }, [hydrate])
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(VOICE_REPLY_KEY, voiceReply ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [voiceReply])
+
+  useEffect(() => {
+    return () => {
+      stopAsrRef.current?.()
+      playerRef.current.stop()
+    }
+  }, [])
 
   useEffect(() => {
     const el = streamRef.current
@@ -68,14 +99,63 @@ export default function ChatPage() {
     }
   }, [messages, sending, scrollStreamToBottom])
 
+  function toggleVoiceReply() {
+    setVoiceReply((prev) => {
+      const next = !prev
+      if (next) {
+        playerRef.current.reset()
+        playerRef.current.unlock()
+      } else {
+        playerRef.current.stop()
+      }
+      return next
+    })
+  }
+
+  function stopListening() {
+    stopAsrRef.current?.()
+    stopAsrRef.current = null
+    setListening(false)
+  }
+
+  function startListening() {
+    if (sending || readOnly || listening) return
+    if (!speechRecognitionSupported()) {
+      setDraftError('当前浏览器不支持语音识别，请改用 Chrome，或直接打字。')
+      return
+    }
+    clearError()
+    const prefix = draft.trim()
+    asrPrefixRef.current = prefix
+    setListening(true)
+    stopAsrRef.current = startSpeechRecognition({
+      onResult: (text) => {
+        const next = prefix ? `${prefix} ${text}` : text
+        setDraft(next)
+      },
+      onError: (message) => {
+        setDraftError(message)
+        setListening(false)
+        stopAsrRef.current = null
+      },
+      onEnd: () => {
+        stopAsrRef.current = null
+        setListening(false)
+      },
+    })
+  }
+
   async function send(text: string) {
     const content = text.trim()
     if (!content || sending || readOnly) return
 
+    stopListening()
     clearError()
     stickToBottom.current = true
     setSending(true)
     setDraft('')
+    playerRef.current.reset()
+    if (voiceReply) playerRef.current.unlock()
 
     const userKey = `u-${Date.now()}`
     const assistantKey = `a-${Date.now()}`
@@ -95,6 +175,7 @@ export default function ChatPage() {
         content,
         sessionId: previousSessionId,
         endSession: false,
+        voiceReply,
         signal: controller.signal,
         onEvent: (event) => {
           if (event.type === 'text') {
@@ -120,6 +201,13 @@ export default function ChatPage() {
                   : m,
               ),
             )
+          } else if (event.type === 'audio_chunk') {
+            const payload = event.payload as AudioChunkPayload
+            const seq = Number(payload.seq)
+            const data = String(payload.data ?? '')
+            if (Number.isFinite(seq) && data) {
+              void playerRef.current.enqueue(seq, data)
+            }
           } else if (event.type === 'error') {
             const msg =
               (event.payload as { message?: string; detail?: string }).message ||
@@ -201,10 +289,22 @@ export default function ChatPage() {
               <p>
                 {sessionId != null ? `会话 #${sessionId}` : '新会话'}
                 {readOnly ? ' · 已结束（只读回放）' : ' · 切换页面会保留当前对话'}
+                {voiceReply ? ' · 语音回复已开启' : ''}
               </p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {!readOnly && (
+              <button
+                type="button"
+                className={`ghost-button${voiceReply ? ' ghost-button--active' : ''}`}
+                aria-pressed={voiceReply}
+                onClick={toggleVoiceReply}
+              >
+                <Volume2 size={16} />
+                语音回复
+              </button>
+            )}
             {sessionId != null && !readOnly && (
               <button
                 type="button"
@@ -215,7 +315,15 @@ export default function ChatPage() {
                 {ending ? '结束中…' : '结束本会话'}
               </button>
             )}
-            <button type="button" className="ghost-button" onClick={() => startNewSession()}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={() => {
+                playerRef.current.stop()
+                stopListening()
+                startNewSession()
+              }}
+            >
               新会话
             </button>
           </div>
@@ -280,13 +388,19 @@ export default function ChatPage() {
             </p>
           ) : (
             <>
+              {voiceReply && (
+                <p className="voice-reply-hint">
+                  <span className="chip chip--live">🔊 语音回复</span>
+                  回复会按句子边出字边播报
+                </p>
+              )}
               <div className="suggest-row">
                 {SUGGESTIONS.map((s) => (
                   <button
                     key={s}
                     type="button"
                     className="suggest"
-                    disabled={sending}
+                    disabled={sending || listening}
                     onClick={() => void send(s)}
                   >
                     {s}
@@ -300,10 +414,30 @@ export default function ChatPage() {
                   void send(draft)
                 }}
               >
+                <button
+                  type="button"
+                  className={`ghost-button composer-mic${listening ? ' ghost-button--active' : ''}`}
+                  disabled={sending}
+                  aria-pressed={listening}
+                  aria-label={listening ? '停止语音输入' : '语音输入'}
+                  title={
+                    speechRecognitionSupported()
+                      ? listening
+                        ? '停止识别'
+                        : '语音输入，识别结果会出现在输入框里'
+                      : '当前浏览器不支持语音识别'
+                  }
+                  onClick={() => {
+                    if (listening) stopListening()
+                    else startListening()
+                  }}
+                >
+                  <Mic size={18} />
+                </button>
                 <textarea
-                  className="text-area"
+                  className={`text-area${listening ? ' text-area--listening' : ''}`}
                   rows={2}
-                  placeholder="慢慢说，不用一次说完…"
+                  placeholder={listening ? '正在听… 说完后可在输入框里改字再发送' : '慢慢说，不用一次说完…'}
                   value={draft}
                   disabled={sending}
                   onChange={(e) => setDraft(e.target.value)}
@@ -314,7 +448,7 @@ export default function ChatPage() {
                     }
                   }}
                 />
-                <button type="submit" className="primary-button" disabled={sending || !draft.trim()}>
+                <button type="submit" className="primary-button" disabled={sending || listening || !draft.trim()}>
                   {sending ? '…' : '发送'}
                 </button>
               </form>
