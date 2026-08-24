@@ -228,33 +228,124 @@ def _dimension_description(dimension: str, level: str) -> str:
     return descriptions[dimension][level]
 
 
+def _level(big_five: dict, key: str) -> str:
+    item = big_five.get(key) or {}
+    return str(item.get("level") or "中等")
+
+
+def _labels_by_level(big_five: dict, level: str) -> list[str]:
+    return [item["label"] for item in big_five.values() if isinstance(item, dict) and item.get("level") == level]
+
+
 def _rich_sections(big_five: dict, evidence_count: int, observations: list[dict] | None = None) -> dict:
-    if evidence_count < 3:
+    """问卷完成后即根据五维分数生成可读分析;对话证据只做补充,不再留空。"""
+    if not big_five:
         return {
-            "overall_analysis": "基础倾向已建立，等待至少 3 段结束会话后再进行更完整的整体分析。",
-            "thinking_decision": "暂不判断：目前还缺少足够的连续决策过程证据。",
-            "learning_style": "暂不判断：目前还缺少足够的学习或执行场景证据。",
-            "strengths_blind_spots": "暂不判断：优势与可能盲点需要跨场景证据支持。",
-            "interests": "暂不判断：兴趣主题会随着持续对话逐步整理。",
-            "career_directions": "暂不判断：这里提供探索方向，不给出职业定论。",
-            "work_environment": "暂不判断：目前还缺少对环境偏好的重复证据。",
-            "growth_focus": "先观察自己在真实场景中的节奏、需要和有效方法，再决定下一步成长重点。",
+            "overall_analysis": "还没有足够的问卷结果来描述倾向。",
+            "thinking_decision": "完成 30 题基础问卷后，这里会根据开放性与尽责性给出思考方式的初稿。",
+            "learning_style": "完成基础问卷后，这里会描述更适合你的学习节奏。",
+            "strengths_blind_spots": "完成基础问卷后，这里会整理可能的优势与需要留意的盲点。",
+            "interests": "完成基础问卷后，这里会给出兴趣探索的起点。",
+            "career_directions": "完成基础问卷后，这里会提供可探索的方向，而不是职业定论。",
+            "work_environment": "完成基础问卷后，这里会描述相对适合的环境特点。",
+            "growth_focus": "先完成基础问卷，再决定下一步可以观察的小行动。",
         }
+    openness = _level(big_five, "openness")
+    conscientiousness = _level(big_five, "conscientiousness")
+    extraversion = _level(big_five, "extraversion")
+    agreeableness = _level(big_five, "agreeableness")
+    sensitivity = _level(big_five, "emotional_sensitivity")
+    high = _labels_by_level(big_five, "偏高")
+    low = _labels_by_level(big_five, "偏低")
+    lines = [
+        f"{item['label']}{item.get('level', '中等')}（{item.get('score', 0)} 分）"
+        for item in big_five.values()
+        if isinstance(item, dict) and item.get("label")
+    ]
+    thinking = {
+        ("偏高", "偏高"): "你更可能先看到多种可能，再把选择收束成可执行的计划；复杂任务时，先写下选项和下一步会更顺。",
+        ("偏高", "中等"): "你愿意吸收新信息，同时不一定把每件事都排进严格计划；给探索留一点时间，再决定先做哪一步。",
+        ("偏高", "偏低"): "你容易被新想法带动，行动节奏更灵活；把灵感写成一个很小的下一步，会比等“想清楚”更有效。",
+        ("中等", "偏高"): "你会在熟悉方案与新信息之间切换，并倾向把决定落成安排；先明确截止条件和第一步，决策会更稳。",
+        ("中等", "中等"): "你通常会结合直觉和利弊再行动；事情一多时，先拆成下一步，比同时处理全部选项更轻松。",
+        ("中等", "偏低"): "你不一定依赖详细计划，更看当下情境；给自己一个最短行动，能减少反复权衡。",
+        ("偏低", "偏高"): "你更信任已经验证过的做法，并重视把事情做完；决策时可以先沿用有效方法，只在卡点时再找新方案。",
+        ("偏低", "中等"): "你偏好具体、可预期的路径，计划可松可紧；先确认“这次只要完成什么”，再补充细节。",
+        ("偏低", "偏低"): "你更看重眼前能用的办法，而不是提前铺开很多方案；选一个最小实验，比同时开多条路更合适。",
+    }[(openness, conscientiousness)]
+    learning = {
+        ("偏高", "偏高"): "较适合把新概念连到例子，并安排短周期练习；先学一块、马上用一次，比一次吞下整章更牢。",
+        ("偏高", "中等"): "好奇心能带你开始，巩固则需要一点回顾节奏；学完用自己的话复述，或马上做一个小练习。",
+        ("偏高", "偏低"): "你可能学得快、也容易跳主题；把“今天只练一个点”写下来，能把兴趣变成留得住的技能。",
+        ("中等", "偏高"): "按计划推进会让你更踏实，内容最好具体；把大目标拆成今天能完成的一小节。",
+        ("中等", "中等"): "例子、步骤和短回顾都有用；不必追求完美计划，保持“学一点、用一点”即可。",
+        ("中等", "偏低"): "你更可能在做中学；先动手，再回头补规则，会比先读完整份材料更顺。",
+        ("偏低", "偏高"): "熟悉模板和清单对你很友好；先按已会的方法练熟，再少量接触新形式。",
+        ("偏低", "中等"): "具体步骤比抽象理论更容易进入；每次只改一个变量，进步会更清楚。",
+        ("偏低", "偏低"): "短、具体、马上能试的材料更合适；先完成最小练习，再决定要不要加深。",
+    }[(openness, conscientiousness)]
+    interests = {
+        "偏高": "你更可能被新主题、故事、观点或跨界组合吸引；可以有意保留一块“只探索、不考核”的时间。",
+        "中等": "你既需要熟悉的爱好来恢复，也会偶尔想尝试新东西；交替安排“老兴趣”和“小尝试”会比较稳。",
+        "偏低": "你更可能在熟悉的事物里感到安心；兴趣不必求多，把已经喜欢的事做深，本身就是探索。",
+    }[openness]
+    extraversion_career = {
+        "偏高": "需要沟通、协作或带动他人的场景可能更有能量",
+        "中等": "可以在独处深耕和协作交流之间切换",
+        "偏低": "需要专注、深度思考或小范围协作的场景可能更舒服",
+    }[extraversion]
+    career = (
+        f"可以沿着{extraversion_career}去看机会；"
+        + ("开放性较高，适合带学习与变化的工作。" if openness == "偏高" else "尽责性较高，适合需要跟进与交付的工作。" if conscientiousness == "偏高" else "宜人性较高，适合需要协调与支持他人的工作。" if agreeableness == "偏高" else "具体方向仍应结合能力、机会和真实体验，这里只提供探索线索，不是职业定论。")
+    )
+    environment = {
+        ("偏高", "偏高"): "相对适合有交流、也有明确节奏的环境，同时保留一点自主安排的空间。",
+        ("偏高", "中等"): "互动能给你能量，但连续刺激后也需要收一收；团队协作搭配可预期的休息会更可持续。",
+        ("偏高", "偏低"): "热闹的协作可能让你兴奋，也更容易累；选择能随时退回安静角落的环境会更稳。",
+        ("中等", "偏高"): "你对氛围和关系比较敏感，清晰分工、少突然评价的环境更友善。",
+        ("中等", "中等"): "目标清楚、允许逐步推进、又不太吵的环境通常更合适。",
+        ("中等", "偏低"): "你可以适应多种场所，但压力大时仍需要可预期的节奏。",
+        ("偏低", "偏高"): "安静、少突然打断、规则清楚的环境更可能让你发挥；深度工作时段值得主动保护。",
+        ("偏低", "中等"): "小团队或独立任务、信息透明的环境会比较舒服。",
+        ("偏低", "偏低"): "干扰少、节奏自己可控的环境更合适；先保证能专注，再考虑社交密度。",
+    }[(extraversion, sensitivity)]
+    growth_map = {
+        "emotional_sensitivity": "成长重点可以放在：压力出现时，先用一个很小的恢复动作（休息、走动、告诉可信的人），再处理任务。",
+        "conscientiousness": "成长重点可以放在：把计划收成“今天只需完成的一件事”，完成比完美更重要。",
+        "openness": "成长重点可以放在：新想法出现时，选一个最小实验去试，而不是同时开很多头。",
+        "extraversion": "成长重点可以放在：按能量安排社交和独处，不为“应该更外向/更独立”苛责自己。",
+        "agreeableness": "成长重点可以放在：在体谅他人的同时，练习把边界和需要说清楚。",
+    }
+    focus_key = next((key for key, item in big_five.items() if isinstance(item, dict) and item.get("level") in {"偏低", "偏高"}), "conscientiousness")
+    strengths = (
+        f"可能的优势与{('、'.join(high) or '观察和调整')}更相关；"
+        f"需要留意的盲点可能与{('、'.join(low) or '压力下对自己要求过高')}有关。"
+        "它们会随场景变化，可以在真实任务里核对。"
+    )
+    overall = (
+        "根据这次 30 题自评，你的基础倾向是："
+        + "，".join(lines)
+        + "。这是当前阶段的自我描述，不是诊断或固定标签。"
+    )
+    sections = {
+        "overall_analysis": overall,
+        "thinking_decision": thinking,
+        "learning_style": learning,
+        "strengths_blind_spots": strengths,
+        "interests": interests,
+        "career_directions": career,
+        "work_environment": environment,
+        "growth_focus": growth_map.get(focus_key, growth_map["conscientiousness"]),
+    }
     stable = [item for item in (observations or []) if item.get("status") == "stable"]
     values = [item.get("value", "") for item in stable if item.get("value")]
-    joined = "、".join(values[:4]) or "稳定的自我观察"
-    high = [item["label"] for item in big_five.values() if item.get("level") == "偏高"]
-    low = [item["label"] for item in big_five.values() if item.get("level") == "偏低"]
-    return {
-        "overall_analysis": f"从基础问卷和 {evidence_count} 段对话看，你呈现出较稳定的自我观察线索，近期常出现：{joined}。这些是当前阶段的倾向，不是固定标签。",
-        "thinking_decision": "你可能会在收集信息、权衡感受和现实限制后再行动；当任务复杂时，先拆分成下一步会更容易推进。",
-        "learning_style": "你更适合把抽象内容转成具体例子，并用短周期回顾来巩固，而不是一次性要求自己完成全部目标。",
-        "strengths_blind_spots": f"可能的优势包括{('、'.join(high) or '持续观察和调整')}; 需要留意的盲点可能与{('、'.join(low) or '压力下过度自我要求')}有关。",
-        "interests": f"对话中暂时整理出这些兴趣线索：{joined}。后续会根据更多不同场景继续修正。",
-        "career_directions": "可以探索需要持续学习、问题拆解与真实沟通的方向；具体选择仍应结合能力、机会和个人体验。",
-        "work_environment": "相对适合目标清晰、允许逐步推进，同时保留一定自主空间的环境。",
-        "growth_focus": "把一次重要觉察转成一个很小、可复盘的行动，持续记录哪些支持真正有效。",
-    }
+    if evidence_count >= 3 and values:
+        joined = "、".join(values[:3])
+        sections["overall_analysis"] += f" 另外，在 {evidence_count} 段已结束的对话里，也重复出现了：{joined}。"
+        sections["interests"] += f" 对话里还提到：{joined}。"
+    elif evidence_count < 3:
+        sections["overall_analysis"] += " 之后的对话只会用来微调这些描述，不会覆盖你刚刚完成的自评。"
+    return sections
 
 
 def _summary(traits: dict, observations: list[dict] | None = None, rich: dict | None = None) -> str:
@@ -318,7 +409,15 @@ def _save_snapshot(db: Session, user_id: int, source: str, content: dict) -> Use
 
 
 def _profile_payload(settings: UserProfileSettings, snapshot: UserProfileSnapshot | None) -> dict:
-    content = snapshot.content if snapshot is not None else None
+    content = dict(snapshot.content) if snapshot is not None and snapshot.content else None
+    if content and content.get("big_five"):
+        content.update(
+            _rich_sections(
+                content.get("big_five") or {},
+                int(content.get("evidence_count") or 0),
+                content.get("observations") or [],
+            )
+        )
     last_edit = settings.last_self_edit_at or settings.last_manual_edit_at
     items = []
     if content:

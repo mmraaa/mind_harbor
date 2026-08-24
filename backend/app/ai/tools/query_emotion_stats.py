@@ -3,7 +3,7 @@
 安全措施(铁律):
 1. LLM 仅负责把自然语言转成 SELECT 语句;
 2. sqlglot AST 校验:单条语句、必须为 SELECT、表名白名单;
-3. 注入 `WHERE user_id = <uid>`(用户数据隔离,聚合查询同样正确);
+3. 按表别名注入 `{alias}.user_id = <uid>`(JOIN 时避免 user_id 歧义);
 4. 强制 LIMIT 100;
 5. 只读连接执行(`SET TRANSACTION READ ONLY`),防误写。
 """
@@ -35,6 +35,9 @@ SQL_GEN_PROMPT = (
     "你是 SQL 生成器。把用户关于自己情绪数据的问题转成一条 PostgreSQL SELECT 语句。\n"
     + SQL_SCHEMA_HINT
     + "\n只允许查询上述表;只输出 SQL 本身,不要分号、不要注释、不要解释。"
+    "\n不要自己写 user_id 条件(系统会按表别名自动注入)。"
+    "\n多表 JOIN 时所有列必须带表别名(如 j.summary、e.category)。"
+    f"\n今天是 {date.today().isoformat()}。用户说「8月15日」等缺年份的日期时按今年理解,不要用去年。"
 )
 
 EXPLAIN_PROMPT = (
@@ -75,9 +78,34 @@ def _jsonable(value):
     return value
 
 
+def _table_qualifier(table: exp.Table) -> str:
+    """表别名(journals AS j → j)或表名,用于限定 user_id,避免 JOIN 后列名歧义。"""
+    return table.alias_or_name
+
+
+def _inject_isolation(tree: exp.Select, user_id: int) -> exp.Select:
+    """给查询中每张白名单表都加上 `{alias}.user_id = uid`,再强制 LIMIT。
+
+    裸写 `user_id = uid` 在 journals JOIN emotions 时会触发 PG AmbiguousColumn。
+    """
+    uid = int(user_id)
+    seen: set[str] = set()
+    for table in tree.find_all(exp.Table):
+        if table.name not in ALLOWED_TABLES:
+            continue
+        qualifier = _table_qualifier(table)
+        if qualifier in seen:
+            continue
+        seen.add(qualifier)
+        tree = tree.where(f"{qualifier}.user_id = {uid}")
+    if not seen:
+        raise ValueError("未解析到查询表")
+    return tree.limit(MAX_ROWS)
+
+
 def _execute_readonly(tree: exp.Select, user_id: int) -> list[dict]:
-    """注入 user_id 过滤 + LIMIT,只读事务执行。"""
-    injected = tree.where(f"user_id = {int(user_id)}").limit(MAX_ROWS)
+    """注入带表限定的 user_id 过滤 + LIMIT,只读事务执行。"""
+    injected = _inject_isolation(tree, user_id)
     clean_sql = injected.sql(dialect="postgres")
 
     with db_engine.connect() as conn:

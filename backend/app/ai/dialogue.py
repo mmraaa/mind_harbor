@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.adapters import llm, tts
 from app.ai import agent, emotion, journal, memory
 from app.ai.emotion import RISK_REPLY_TEMPLATE
+from app.ai.speakable import to_speakable
 from app.models.emotion import Emotion, Journal
 from app.models.session import ChatSession, Message
 from app.models.user import User
@@ -32,7 +33,6 @@ SYSTEM_PROMPT = (
     "涉及心理危机(自伤/自杀念头)时,"
     "务必引导用户联系危机干预热线 400-161-9995 或校内心理咨询中心。"
     "不做诊断,不承诺保密,回复简洁自然(一般不超过 200 字)。"
-    ""
 )
 
 RISK_CARD = {
@@ -99,6 +99,25 @@ def stream_reply(*, content: str, context: str = "") -> Iterator[str]:
     yield from llm.stream_chat(
         [{"role": "system", "content": prompt}, {"role": "user", "content": content}]
     )
+
+
+def _tts_chunk(session_id: int, seq: int, sentence: str) -> dict | None:
+    """合成一句语音;Markdown/表情清洗后无可读内容则跳过,不打供应商。"""
+    spoken = to_speakable(sentence)
+    if not spoken:
+        logger.info("TTS 跳过不可朗读句(session_id=%s, raw=%r)", session_id, sentence[:80])
+        return None
+    try:
+        audio = tts.synthesize(spoken)
+    except Exception:  # noqa: BLE001 单句 TTS 失败:跳过该句音频,文本不受影响
+        logger.exception("TTS 句合成失败(session_id=%s)", session_id)
+        return None
+    return {
+        "seq": seq,
+        "text": spoken,
+        "data": base64.b64encode(audio).decode("ascii"),
+        "format": "mp3",
+    }
 
 
 def chat_stream(
@@ -179,38 +198,17 @@ def chat_stream(
         buf += delta
         while (sentence := _take_first_sentence(buf)) is not None:
             buf = buf[len(sentence):]
-            try:
-                audio = tts.synthesize(sentence)
-            except Exception:  # noqa: BLE001 单句 TTS 失败:跳过该句音频,文本不受影响
-                logger.exception("TTS 句合成失败(session_id=%s)", session.id)
+            payload = _tts_chunk(session.id, audio_seq, sentence)
+            if payload is None:
                 continue
-            yield _sse(
-                "audio_chunk",
-                {
-                    "seq": audio_seq,
-                    "text": sentence,
-                    "data": base64.b64encode(audio).decode("ascii"),
-                    "format": "mp3",
-                },
-            )
+            yield _sse("audio_chunk", payload)
             audio_seq += 1
     reply = "".join(chunks).strip()
     # 流结束:尾部未到句界的残余也合成语音(保证整段可朗读)
     if voice_on and buf.strip():
-        try:
-            audio = tts.synthesize(buf)
-        except Exception:  # noqa: BLE001
-            audio = None
-        if audio:
-            yield _sse(
-                "audio_chunk",
-                {
-                    "seq": audio_seq,
-                    "text": buf,
-                    "data": base64.b64encode(audio).decode("ascii"),
-                    "format": "mp3",
-                },
-            )
+        payload = _tts_chunk(session.id, audio_seq, buf)
+        if payload:
+            yield _sse("audio_chunk", payload)
 
     # 6) 助手消息落库 + 记忆更新(工具卡片随消息持久化,历史回放可见)
     db.add(

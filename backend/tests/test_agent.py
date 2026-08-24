@@ -194,6 +194,50 @@ def test_query_emotion_stats_returns_own_rows_only(db, seed_user, seed_session, 
     assert rows[0]["cnt"] == 1
 
 
+def test_inject_isolation_qualifies_user_id_on_join():
+    """多表 JOIN 时隔离条件必须带表别名,否则 PG 报 user_id 不明确。"""
+    from app.ai.tools.query_emotion_stats import _inject_isolation, _validate
+
+    tree = _validate(
+        "SELECT j.summary, e.category FROM journals AS j "
+        "JOIN emotions AS e ON j.id = e.journal_id "
+        "WHERE CAST(j.created_at AS DATE) = '2026-08-15'"
+    )
+    sql = _inject_isolation(tree, 3).sql(dialect="postgres")
+    assert "j.user_id = 3" in sql
+    assert "e.user_id = 3" in sql
+    # 不能再出现无限定的 `AND user_id =`
+    assert "AND user_id =" not in sql.replace("j.user_id =", "").replace("e.user_id =", "")
+
+
+def test_query_emotion_stats_join_does_not_raise_ambiguous_user_id(
+    db, seed_user, seed_session, engine, monkeypatch,
+):
+    """复现线上 JOIN journals/emotions 后注入裸 user_id 的失败路径。"""
+    journal = Journal(user_id=seed_user.id, session_id=seed_session.id, summary="8月笔记", content="有点累", mood_score=6)
+    db.add(journal)
+    db.flush()
+    db.add(Emotion(
+        user_id=seed_user.id, journal_id=journal.id, session_id=seed_session.id,
+        category="tired", intensity=5, stress_source="学业", support_need="休息",
+    ))
+    db.commit()
+
+    fake = FakeSqlLlm([
+        "SELECT j.summary, j.content, e.category, e.intensity "
+        "FROM journals AS j JOIN emotions AS e ON j.id = e.journal_id "
+        "WHERE CAST(j.created_at AS DATE) = CURRENT_DATE",
+        "已整理成表",
+    ])
+    monkeypatch.setattr(llm_adapter, "complete_text", fake.complete_text)
+    monkeypatch.setattr("app.ai.tools.query_emotion_stats.db_engine", engine)
+
+    handler = tools_registry.registry.get("query_emotion_stats").handler
+    result = handler(db, seed_user.id, seed_session.id, question="用表格整理今天的笔记")
+    assert result["row_count"] >= 1
+    assert result["rows"][0]["summary"] == "8月笔记"
+
+
 @pytest.mark.parametrize(
     "bad_sql",
     [
