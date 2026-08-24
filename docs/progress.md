@@ -33,6 +33,15 @@
 
 ## 已完成
 
+### 2026-08-24 · TTS 清洗、SQL 隔离限定、画像即时分析
+
+- **完成内容**:语音合成前用 `to_speakable()` 去掉 Markdown/表情/表格分隔行,空句不打 TTS。`query_emotion_stats` 按表别名注入 `{alias}.user_id`,JOIN journals/emotions 不再 AmbiguousColumn;SQL 提示带当天日期。大五人格问卷完成后立即按分数生成分析段落,GET 时覆盖旧快照中的「暂不判断」;对话证据只作补充。
+- **涉及文件**:`backend/app/ai/speakable.py`、`backend/app/ai/dialogue.py`、`backend/app/ai/tools/query_emotion_stats.py`、`backend/app/services/user_profile.py`;测试 `test_speakable.py`、`test_agent.py`、`test_user_profile.py`。
+- **测试结果**:`pytest tests/test_speakable.py tests/test_agent.py tests/test_user_profile.py tests/test_dialogue.py` → **51 passed**。
+- **commit**:`76c4ad0`
+- **评审结论**:未评审。
+- **遗留问题**:成长画像仍未注入聊天 LLM 上下文;`observe_session` 未接到会话结束;长期记忆 `user_memories` 当前库为空。
+
 ### 2026-08-24 · 学生端语音回复 + 浏览器 ASR + 情绪超时回落
 
 - **完成内容**:学生聊天页对接协议 v4:`voice_reply` 开关(sessionStorage)、浏览器 Web Speech 写入同一输入框(连续识别累加 finals+interim)、`audio_chunk` 按 seq 排队播放。去掉旧 `speak_voice` 卡片。情绪识别 LLM 超时/网络失败回落默认 calm,不再打断整轮 SSE。
