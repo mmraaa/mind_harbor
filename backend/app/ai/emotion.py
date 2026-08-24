@@ -6,10 +6,15 @@
 情绪类别固定枚举 EMOTION_CATEGORIES(铁律)来自 `app/models/emotion.py`,非法类别回落 calm。
 """
 
+import logging
 from dataclasses import dataclass
+
+import httpx
 
 from app.adapters import llm
 from app.models.emotion import EMOTION_CATEGORIES
+
+logger = logging.getLogger(__name__)
 
 # 危机关键词库:自伤 / 自杀类关键词,命中即高风险(快速通道)
 RISK_KEYWORDS = [
@@ -106,7 +111,12 @@ def analyze(
         )
 
     user = _build_user_prompt(text, history, summary)
-    data = llm.complete_json(EMOTION_SYSTEM_PROMPT, user)
+    try:
+        data = llm.complete_json(EMOTION_SYSTEM_PROMPT, user)
+    except (httpx.TimeoutException, httpx.RequestError):
+        # 情绪识别失败不应阻断整轮对话;危机关键词通道仍生效。
+        logger.exception("情绪识别 LLM 超时或网络异常,回落默认情绪")
+        return EmotionResult()
 
     category = data.get("category") or "calm"
     if category not in EMOTION_CATEGORIES:

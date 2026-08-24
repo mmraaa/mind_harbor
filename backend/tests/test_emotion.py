@@ -3,6 +3,8 @@
 约定:LLM 一律 monkeypatch(app.adapters.llm.complete_json),零真实 API。
 """
 
+import httpx
+
 from app.ai import emotion
 from app.adapters import llm as llm_mod
 
@@ -78,6 +80,18 @@ def test_analyze_risk_keyword_fast_path_skips_llm(monkeypatch):
     assert result.is_risk is True
     assert "想活" in (result.risk_reason or "")
     assert called is False  # 未调 LLM
+
+
+def test_analyze_timeout_falls_back_without_raising(monkeypatch):
+    """LLM 读超时时回落默认情绪,不把整轮聊天打挂。"""
+
+    def boom(system, user, **kw):
+        raise httpx.ReadTimeout("The read operation timed out")
+
+    monkeypatch.setattr(llm_mod, "complete_json", boom)
+    result = emotion.analyze("今天有点累")
+    assert result.is_risk is False
+    assert result.category == "calm"
 
 
 def test_analyze_without_context_still_works(monkeypatch):

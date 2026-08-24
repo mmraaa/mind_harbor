@@ -33,6 +33,15 @@
 
 ## 已完成
 
+### 2026-08-24 · 学生端语音回复 + 浏览器 ASR + 情绪超时回落
+
+- **完成内容**:学生聊天页对接协议 v4:`voice_reply` 开关(sessionStorage)、浏览器 Web Speech 写入同一输入框(连续识别累加 finals+interim)、`audio_chunk` 按 seq 排队播放。去掉旧 `speak_voice` 卡片。情绪识别 LLM 超时/网络失败回落默认 calm,不再打断整轮 SSE。
+- **涉及文件**:`frontend/src/pages/student/ChatPage.tsx`、`frontend/src/api/chat.ts`、`frontend/src/lib/speechInput.ts`、`frontend/src/lib/audioChunkPlayer.ts`、`frontend/src/components/ToolCards.tsx`、`frontend/src/styles/app.css`;`backend/app/ai/emotion.py`、`backend/tests/test_emotion.py`。
+- **测试结果**:情绪超时回落用例已加;`pytest backend/tests/test_emotion.py` 此前通过。前端未跑 `pnpm build`(本次为提交现有改动)。
+- **commit**:本提交。
+- **评审结论**:未评审。
+- **遗留问题**:阿里云 TTS 个别句 `ret=415` 仍会跳过该句音频;切句过碎/失败重试未做。
+
 ### 2026-08-24 · 语音收敛为 /chat 扩展开关(voice_reply → 句子级 audio_chunk)
 
 - **决策(用户)**:语音定位为**扩展功能**——开启后 AI 在文本输出基础上附带语音;语音输入由浏览器 ASR 转文本;改动落在既有 `POST /chat` 上;且**语音要跟得上文本(句子级流式),不是文本整段结束才返回整段 URL**。
