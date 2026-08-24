@@ -211,17 +211,16 @@
 
 **输出**：SSE `tool_card` 事件流 + 最终 `text` 回复。
 
-#### 3.5.4 语音陪伴（HTTP 语音桥接）
+#### 3.5.4 语音扩展（voice_reply 开关，随 /chat）
 
-**功能描述**：语音能力为**独立模块**（对标 AI 面试官“语音桥接/语音面试”功能点）：语音识别在**浏览器**完成，识别文本展示供用户确认后，经 HTTP 桥接接口进入后端对话闭环，后端返回流式文本与音频 URL。
+**功能描述**：语音为普通聊天的**可选扩展**：用户开启后，`POST /chat` 在文本回复基础上于流尾追加 `audio_url` 事件，前端播放合成语音；语音输入由**浏览器 ASR** 转文本后照常走 `/chat`（前端展示识别文本供确认）。
 
 **处理**：
-- 通道：`POST /voice/bridge/chat`（SSE）：流式 `text` 事件先行渲染 → 文本完成后 TTS 整段合成 → 流尾 `audio_url{url,text}` 事件 → 前端 `<audio src>` 边下边播（文本与语音不冲突）；
-- 会话/风险/记忆/Agent/日记闭环与文字聊天共用；`session_id` 复用本人 active 会话；
-- `end_session=true` 生成情绪日记并下发 `journal` 事件；
-- 降级：TTS 不可用 → `audio_url{url:null,degraded:true}`，文本照常；风险命中按风险模板返回（无音频）。
+- 请求新增字段 `voice_reply`（默认 false）；开启则文本流完成后调 `adapters/tts.synthesize_with_url` 整段合成，向 SSE 追加 `audio_url{url,text,degraded?}` 事件（文本与音频不冲突、不被 TTS 阻塞）；
+- 会话/风险/记忆/Agent/日记闭环与文字聊天完全一致（同一 `POST /chat` 通道）；
+- 降级：TTS 不可用 → `audio_url{url:null,degraded:true}`，文本照常；风险命中按风险模板返回（不合成语音）。
 
-**对应接口**：`POST /voice/bridge/chat`，协议见 `docs/voice-bridge-protocol.md`。
+**对应接口**：`POST /chat`（新增字段与事件见 `docs/voice-chat-protocol.md`）。
 
 ### 3.6 收藏、提醒、练习与历史
 

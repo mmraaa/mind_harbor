@@ -100,12 +100,12 @@ POST /chat(SSE)
 **相关模块**:`ai/rag/`(ingest / chunking / search)、`adapters/embedding.py`、`ai/tools/search_knowledge.py`、`scripts/ingest_knowledge.py`。
 **图**:`mindharbor-rag-sequence.mmd`。
 
-### 4.4 语音陪伴(HTTP 语音桥接)
+### 4.4 语音陪伴(chat 扩展开关)
 
-**职责**:语音为独立模块(对标 AI 面试官"语音桥接"功能点):浏览器 ASR 出文本 → 确认 → HTTP 桥接接口进入对话闭环,后端返回流式文本与音频 URL。
+**职责**:语音为普通聊天的**可选扩展**——`POST /chat` 新增 `voice_reply` 字段,开启后文本流末尾追加 `audio_url` 事件;输入侧由浏览器 ASR 转文本,后端仅负责文本业务与整段 TTS URL。
 
-**相关模块**:`api/voice.py`(`POST /voice/bridge/chat`,SSE)、`adapters/tts.py`(`synthesize_with_url` 整段合成)。
-**说明**:不采用后端 ASR/实时双向流;文本 `text` 事件流式先行,整段 TTS 合成后 `audio_url{url,text}` 在流尾返回,前端 `<audio>` 播放 URL——文本与语音不冲突、不互阻塞。降级:TT 不可用 → `audio_url{url:null,degraded:true}`;风险命中返回风险模板(无音频)。协议见 `docs/voice-bridge-protocol.md`。
+**相关模块**:`ai/dialogue.py`(`chat_stream` 内追加 `audio_url`)、`adapters/tts.py`(`synthesize_with_url`)。
+**说明**:不采用后端 ASR/独立通道/独立接口;文本 `text` 事件照常流式先行,无视 TTS 阻塞;`audio_url` 仅在 `voice_reply=true` 且文本完成后出现。降级:TTS 失败 → `audio_url{url:null,degraded:true}`;风险命中返回风险模板(不合成语音)。协议见 `docs/voice-chat-protocol.md`。
 
 ### 4.5 评估与咨询师端报告功能
 
