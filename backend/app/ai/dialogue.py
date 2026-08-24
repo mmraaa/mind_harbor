@@ -11,7 +11,7 @@ from typing import Iterator
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.adapters import llm
+from app.adapters import llm, tts
 from app.ai import agent, emotion, journal, memory
 from app.ai.emotion import RISK_REPLY_TEMPLATE
 from app.models.emotion import Emotion, Journal
@@ -169,6 +169,15 @@ def chat_stream(
     )
     memory.update(session, _load_messages(db, session.id), user.id, db)
     db.commit()
+
+    # 语音扩展:voice_reply=True 时,在文本基础上附加整段 TTS(流尾 audio_url 事件)
+    if body.voice_reply and reply:
+        try:
+            audio = tts.synthesize_with_url(reply)
+            yield _sse("audio_url", {"url": audio["url"], "text": reply})
+        except Exception:  # noqa: BLE001 TTS 不可用 → 降级,不影响文本
+            logger.exception("TTS 合成失败(session_id=%s)", session.id)
+            yield _sse("audio_url", {"url": None, "text": reply, "degraded": True})
 
     # 7) 会话结束 → 情绪日记闭环
     if body.end_session:

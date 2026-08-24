@@ -33,6 +33,16 @@
 
 ## 已完成
 
+### 2026-08-24 · 语音收敛为 /chat 扩展开关(voice_reply→audio_url;替代 v2 桥接)
+
+- **决策(用户)**:语音定位为**扩展功能**——开启后 AI 在文本输出基础上附带语音;语音输入由浏览器 ASR 转文本;不再使用独立桥接接口,改动落在既有 `POST /chat` 上。
+- **实现(TDD,3 用例)**:`ChatRequest` 新增 `voice_reply`(默认 false);`dialogue.chat_stream` 在文本流结束、journal 前追加 `audio_url{url,text,degraded?}` 事件(TTS 整段合成,`tts.synthesize_with_url`);风险分支不合成语音;文本不被 TTS 阻塞(流式不冲突)。删除 `app/api/voice.py`(桥接)、`tests/test_voice_bridge.py`、`docs/voice-bridge-protocol.md`;`main` 移除 voice 挂载。
+- **文件**:`backend/app/schemas/chat.py`、`backend/app/ai/dialogue.py`(import tts + 追加音频事件)、`backend/app/main.py`(还原)、`backend/tests/test_chat_voice.py`(新增:开启产出 audio_url / 缺省或失败不产出并降级);文档 `docs/voice-chat-protocol.md`(新增:开关用法/事件/演进对照 v1 WS→v2 桥接→v3 开关)、规格 §3.5.4、架构 §4.4、AGENTS.md、progress。
+- **测试结果**:`3 passed`(chat voice);全量 **129 passed 全绿**(Milvus 容器已恢复,此前 9 个 rag 环境 errors 消失)。
+- **commit**:部分已在 `25a6539/7cecae9/daac13a/79054bd`;本批 feat+docs 提交后同分支整理。
+- **评审结论**:未评审。
+- **遗留问题**:前端语音开关 + 浏览器 ASR 确认 UI + `audio_url` 播放(前端团队);TTS 为整段 URL,未做分块边推边播(如需再议)。
+
 ### 2026-08-24 · 语音助手返工为 HTTP 桥接(浏览器 ASR;git 回退弃用 WS 双向流)
 
 - **决策(用户)**:放弃"后端 WS 双向流 + 后端 ASR",改对标 AI 面试官"语音桥接"功能点——**浏览器 ASR 出文本 → 前端展示确认 → POST 桥接接口 → 后端返回流式文本 + 音频 URL → 前端播放**;优化"返回文本与 URL 流式不冲突"。
