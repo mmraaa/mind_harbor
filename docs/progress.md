@@ -33,6 +33,17 @@
 
 ## 已完成
 
+### 2026-08-24 · 语音助手返工为 HTTP 桥接(浏览器 ASR;git 回退弃用 WS 双向流)
+
+- **决策(用户)**:放弃"后端 WS 双向流 + 后端 ASR",改对标 AI 面试官"语音桥接"功能点——**浏览器 ASR 出文本 → 前端展示确认 → POST 桥接接口 → 后端返回流式文本 + 音频 URL → 前端播放**;优化"返回文本与 URL 流式不冲突"。
+- **实现方式(git 回退)**:`git reset --hard e44961d` 丢弃语音 WS 实现提交(`47b08b9` 回合编排、`651ccdf` WS 路由、`0e6a6fa` 会话闭环、`7ffbbb5` 协议文档,及 `adapters/asr.py`/`tts_v2.py`/`ai/voice.py`/相关测试);保留 Task0(移除 speak_voice,工具 7→6)与 Task3(`dialogue.stream_reply`)。
+- **新实现(TDD,4 用例)**:`POST /api/v1/voice/bridge/chat`(SSE)——`text` 事件流式先行 → 文本完成后 `tts.synthesize_with_url` 整段合成 → 流尾 `audio_url{url,text}`;会话归属/风险/记忆/Agent/日记闭环复用 dialogue;`end_session` → journal + 会话 closed。文件:`backend/app/api/voice.py`(重写为 HTTP)、`backend/tests/test_voice_bridge.py`(新增)。
+- **文档**:`docs/voice-bridge-protocol.md`(新增,前端交接;注明与 v1 WS 的差异)、规格书 §3.5.3 工具表 7→6、§3.5.4 改 HTTP 桥接、架构 §4.4/§6.4、AGENTS.md 同步。
+- **测试结果**:桥接 `4 passed`;全量 `125 passed + 9 errors`(9 个均为 `test_rag` 的 Milvus 测试,pymilvus 连接失败——**Milvus 容器未运行**,环境问题与本次改动无关;启动 Docker/Milvus 后应恢复全绿)。
+- **commit**:`25a6539`(feat 桥接)、`7cecae9`(docs 桥接)。
+- **评审结论**:未评审。
+- **遗留问题**:① 需启动 Docker/Milvus 后重跑全量确认 9 个 rag 测试;② 前端语音页:浏览器 ASR + 文本确认 UI + `audio_url` 播放(前端团队);③ TTS 为整段合成返回 URL,未做流式块边推边播(如需再议)。
+
 ### 2026-08-21 · 撰写《架构说明》(对标软件架构文档模板)
 
 - **完成内容**:按架构文档模板(简介 → 构架表示方式 → 目标约束 → 关键功能视图 → 层次结构 → 逻辑视图)编写 MindHarbor 架构说明,与实现一一对应:5 个关键功能(情绪识别与日记底座 / AI 陪伴对话 / RAG / 语音陪伴 / 咨询师评估 = 对应模板的简历解析·AI 对话·RAG·语音面试·评估报告);层次结构 mermaid 图(表现→接口→商业→AI 编排→适配→数据);逻辑视图 6 层(用户服务层即三角色前端 / 商业服务层即 services+admin_module / AI 能力服务层 / 数据服务层 PG+Milvus / 部署视图)。
