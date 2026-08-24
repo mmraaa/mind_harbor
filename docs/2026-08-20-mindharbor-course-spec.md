@@ -211,14 +211,14 @@
 
 **输出**：SSE `tool_card` 事件流 + 最终 `text` 回复。
 
-#### 3.5.4 语音扩展（voice_reply 开关，随 /chat）
+#### 3.5.4 语音扩展（句子级流式，voice_reply 开关，随 /chat）
 
-**功能描述**：语音为普通聊天的**可选扩展**：用户开启后，`POST /chat` 在文本回复基础上于流尾追加 `audio_url` 事件，前端播放合成语音；语音输入由**浏览器 ASR** 转文本后照常走 `/chat`（前端展示识别文本供确认）。
+**功能描述**：语音为普通聊天的**可选扩展**：用户开启后，回复按**句子**切分，每句文本输出后立即合成该句音频，以 `audio_chunk{seq,text,data,format}` 事件紧跟发出——语音与文本**逐句同步**（而不是文本整段结束后返回整段 URL）。语音输入由浏览器 ASR 转文本，照常走 `/chat`。
 
 **处理**：
-- 请求新增字段 `voice_reply`（默认 false）；开启则文本流完成后调 `adapters/tts.synthesize_with_url` 整段合成，向 SSE 追加 `audio_url{url,text,degraded?}` 事件（文本与音频不冲突、不被 TTS 阻塞）；
-- 会话/风险/记忆/Agent/日记闭环与文字聊天完全一致（同一 `POST /chat` 通道）；
-- 降级：TTS 不可用 → `audio_url{url:null,degraded:true}`，文本照常；风险命中按风险模板返回（不合成语音）。
+- 请求新增字段 `voice_reply`（默认 false）；`dialogue.chat_stream` 在文本流内按标点/长度切句，句完整即调 `adapters/tts.synthesize` 合成该句，紧跟对应 `text` 事件发出 `audio_chunk`（base64 mp3）；流结束时未到句界的尾句同样合成；
+- 文本不被 TTS 阻塞（句子级串行，延迟远小于整段）；某句 TTS 失败仅跳过该句音频，文本照常；
+- 会话/风险/记忆/Agent/日记闭环与文字聊天完全一致（同一 `POST /chat` 通道）；风险命中按风险模板返回（不合成语音）。
 
 **对应接口**：`POST /chat`（新增字段与事件见 `docs/voice-chat-protocol.md`）。
 

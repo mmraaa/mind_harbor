@@ -33,15 +33,15 @@
 
 ## 已完成
 
-### 2026-08-24 · 语音收敛为 /chat 扩展开关(voice_reply→audio_url;替代 v2 桥接)
+### 2026-08-24 · 语音收敛为 /chat 扩展开关(voice_reply → 句子级 audio_chunk)
 
-- **决策(用户)**:语音定位为**扩展功能**——开启后 AI 在文本输出基础上附带语音;语音输入由浏览器 ASR 转文本;不再使用独立桥接接口,改动落在既有 `POST /chat` 上。
-- **实现(TDD,3 用例)**:`ChatRequest` 新增 `voice_reply`(默认 false);`dialogue.chat_stream` 在文本流结束、journal 前追加 `audio_url{url,text,degraded?}` 事件(TTS 整段合成,`tts.synthesize_with_url`);风险分支不合成语音;文本不被 TTS 阻塞(流式不冲突)。删除 `app/api/voice.py`(桥接)、`tests/test_voice_bridge.py`、`docs/voice-bridge-protocol.md`;`main` 移除 voice 挂载。
-- **文件**:`backend/app/schemas/chat.py`、`backend/app/ai/dialogue.py`(import tts + 追加音频事件)、`backend/app/main.py`(还原)、`backend/tests/test_chat_voice.py`(新增:开启产出 audio_url / 缺省或失败不产出并降级);文档 `docs/voice-chat-protocol.md`(新增:开关用法/事件/演进对照 v1 WS→v2 桥接→v3 开关)、规格 §3.5.4、架构 §4.4、AGENTS.md、progress。
-- **测试结果**:`3 passed`(chat voice);全量 **129 passed 全绿**(Milvus 容器已恢复,此前 9 个 rag 环境 errors 消失)。
-- **commit**:部分已在 `25a6539/7cecae9/daac13a/79054bd`;本批 feat+docs 提交后同分支整理。
+- **决策(用户)**:语音定位为**扩展功能**——开启后 AI 在文本输出基础上附带语音;语音输入由浏览器 ASR 转文本;改动落在既有 `POST /chat` 上;且**语音要跟得上文本(句子级流式),不是文本整段结束才返回整段 URL**。
+- **实现(TDD,3 用例)**:`ChatRequest` 新增 `voice_reply`(默认 false);`dialogue.chat_stream` 在文本流内按标点/长度切句,句完整即 `tts.synthesize` 合成该句,紧跟对应 `text` 事件发出 `audio_chunk{seq,text,data(base64 mp3),format}`;流结束未到句界的尾句同样合成;失败句跳过音频、文本不受影响;风险分支不合成。删除整段 URL 分支(`audio_url`)。删除桥接 `app/api/voice.py`/`test_voice_bridge.py`/`docs/voice-bridge-protocol.md`;`main` 移除 voice 挂载。
+- **文件**:`backend/app/schemas/chat.py`、`backend/app/ai/dialogue.py`(import tts/base64、`_take_first_sentence`、流内切句合成)、`backend/app/main.py`(还原)、`backend/tests/test_chat_voice.py`(流式语义:插件 interleave/缺省无 chunk/失败句跳过);文档 `docs/voice-chat-protocol.md`(v4 句子级流式)、规格 §3.5.4、架构 §4.4、AGENTS.md。
+- **测试结果**:流式语音用例 `3 passed`,`dialogue+student` 回归通过;**全量未跑**(用户指示先更新文档;Milvus 容器此前已恢复,上次全量 129 passed)。
+- **commit**:feat+docs 提交(本批 `7673f4b/8f06c3e` 为 v3 整段 URL;v4 句子级流式代码与文档待提交)。
 - **评审结论**:未评审。
-- **遗留问题**:前端语音开关 + 浏览器 ASR 确认 UI + `audio_url` 播放(前端团队);TTS 为整段 URL,未做分块边推边播(如需再议)。
+- **遗留问题**:前端语音开关 + 浏览器 ASR 确认 UI + `audio_chunk` 按 seq 顺序播放队列(前端团队);TTS 为句级串行合成,后续可并行化进一步降低句间延迟。
 
 ### 2026-08-24 · 语音助手返工为 HTTP 桥接(浏览器 ASR;git 回退弃用 WS 双向流)
 

@@ -100,12 +100,12 @@ POST /chat(SSE)
 **相关模块**:`ai/rag/`(ingest / chunking / search)、`adapters/embedding.py`、`ai/tools/search_knowledge.py`、`scripts/ingest_knowledge.py`。
 **图**:`mindharbor-rag-sequence.mmd`。
 
-### 4.4 语音陪伴(chat 扩展开关)
+### 4.4 语音陪伴(chat 扩展开关,句子级流式)
 
-**职责**:语音为普通聊天的**可选扩展**——`POST /chat` 新增 `voice_reply` 字段,开启后文本流末尾追加 `audio_url` 事件;输入侧由浏览器 ASR 转文本,后端仅负责文本业务与整段 TTS URL。
+**职责**:语音为普通聊天的**可选扩展且句子级流式**——`POST /chat` 新增 `voice_reply` 字段,回复按句切分,每句文本输出后立即合成该句,以 `audio_chunk{seq,text,data(base64 mp3)}` 紧跟发出;输入侧由浏览器 ASR 转文本,后端仅负责文本业务与逐句 TTS。
 
-**相关模块**:`ai/dialogue.py`(`chat_stream` 内追加 `audio_url`)、`adapters/tts.py`(`synthesize_with_url`)。
-**说明**:不采用后端 ASR/独立通道/独立接口;文本 `text` 事件照常流式先行,无视 TTS 阻塞;`audio_url` 仅在 `voice_reply=true` 且文本完成后出现。降级:TTS 失败 → `audio_url{url:null,degraded:true}`;风险命中返回风险模板(不合成语音)。协议见 `docs/voice-chat-protocol.md`。
+**相关模块**:`ai/dialogue.py`(流内切句 + `audio_chunk`)、`adapters/tts.py`(`synthesize` 逐句)。
+**说明**:不采用后端 ASR/独立通道/整段 URL;文本 `text` 事件照常流式先行,句 TTS 合成紧随对应文本句(句子级)——语音跟得上文本;某句失败仅跳该句音频,文本不受影响;风险命中返回风险模板(不合成语音)。协议见 `docs/voice-chat-protocol.md`。
 
 ### 4.5 评估与咨询师端报告功能
 
