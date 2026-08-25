@@ -7,11 +7,32 @@ collection schema:
     - 度量:COSINE。
 """
 
+import os
+
 from pymilvus import MilvusClient
 
 from app.core.config import get_settings
 
 METRIC_TYPE = "COSINE"
+
+
+def _bypass_proxy_for_local_endpoint(endpoint: str) -> None:
+    """Milvus Lite uses a local gRPC port; do not route it through a desktop proxy."""
+    local = not endpoint.startswith(("http://", "https://")) or any(
+        host in endpoint for host in ("127.0.0.1", "localhost", "::1")
+    )
+    if not local:
+        return
+    # grpc-core may use the proxy variables directly and ignore NO_PROXY on
+    # Windows. A local Lite endpoint must never be routed through that proxy.
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        os.environ.pop(name, None)
+    for name in ("NO_PROXY", "no_proxy"):
+        values = [item.strip() for item in os.environ.get(name, "").split(",") if item.strip()]
+        for host in ("127.0.0.1", "localhost", "::1"):
+            if host not in values:
+                values.append(host)
+        os.environ[name] = ",".join(values)
 
 
 class MilvusStore:
@@ -21,7 +42,9 @@ class MilvusStore:
         s = get_settings()
         self.collection = collection or s.milvus_collection
         self.dim = dim or s.embedding_dim
-        self._client = MilvusClient(uri=uri or f"http://{s.milvus_host}:{s.milvus_port}")
+        endpoint = uri or s.milvus_uri or f"http://{s.milvus_host}:{s.milvus_port}"
+        _bypass_proxy_for_local_endpoint(endpoint)
+        self._client = MilvusClient(uri=endpoint)
 
     def has_collection(self) -> bool:
         return self._client.has_collection(self.collection)

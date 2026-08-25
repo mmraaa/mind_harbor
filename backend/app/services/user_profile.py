@@ -323,7 +323,7 @@ def _rich_sections(big_five: dict, evidence_count: int, observations: list[dict]
         "它们会随场景变化，可以在真实任务里核对。"
     )
     overall = (
-        "根据这次 30 题自评，你的基础倾向是："
+        "基础倾向：根据这次 30 题自评，"
         + "，".join(lines)
         + "。这是当前阶段的自我描述，不是诊断或固定标签。"
     )

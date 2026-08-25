@@ -20,6 +20,8 @@ from app.models.emotion import Emotion, Journal
 from app.models.session import ChatSession, Message
 from app.models.user import User
 from app.schemas.chat import ChatRequest
+from app.services import user_memory as user_memory_service
+from app.services import user_profile
 
 logger = logging.getLogger(__name__)
 
@@ -256,6 +258,15 @@ def finish_session(db: Session, user: User, session: ChatSession) -> dict:
     j = journal.generate(session.id, db, user.id)
     session.status = "closed"
     memory.settle_long_term_memory(db, user.id)
+    try:
+        user_memory_service.extract_session_candidates(db, user.id, session.id)
+    except Exception:  # noqa: BLE001
+        logger.exception("个性化记忆提取失败(session_id=%s, user_id=%s)", session.id, user.id)
+    try:
+        # 画像观察是可选的、低优先级派生数据；失败不能影响会话闭环。
+        user_profile.observe_session(db, user.id, session.id)
+    except Exception:  # noqa: BLE001 - 画像异常仅记录，不阻断日记保存
+        logger.exception("用户画像观察失败(session_id=%s, user_id=%s)", session.id, user.id)
     db.commit()
     return journal_payload(db, j)
 

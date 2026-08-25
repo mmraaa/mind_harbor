@@ -19,6 +19,12 @@ SERVICE_META = {
     "embedding": ("向量模型", "embedding_api_key", "embedding_base_url", "embedding_model"),
     "tts": ("语音陪伴", "tts_api_key", "tts_base_url", "tts_model"),
     "doodle_review": ("画作审核", "doodle_review_api_key", "doodle_review_base_url", "doodle_review_model"),
+    "profile_analysis": (
+        "人物画像分析",
+        "profile_analysis_api_key",
+        "profile_analysis_base_url",
+        "profile_analysis_model",
+    ),
 }
 
 # 管理端首次初始化用的可运行默认值；管理员仍可在页面中调整。
@@ -27,6 +33,7 @@ SERVICE_DEFAULTS = {
     "embedding": {"context_window": 8192, "max_tokens": 2048, "timeout_seconds": 60, "token_budget": 1_000_000},
     "tts": {"context_window": 8192, "max_tokens": 2048, "timeout_seconds": 120, "token_budget": 1_000_000},
     "doodle_review": {"context_window": 32768, "max_tokens": 4096, "timeout_seconds": 180, "token_budget": 1_000_000},
+    "profile_analysis": {"context_window": 32768, "max_tokens": 4096, "timeout_seconds": 120, "token_budget": 1_000_000},
 }
 
 

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     postgres_db: str = "mindharbor"
     postgres_user: str = "mindharbor"
     postgres_password: str = "mindharbor"
+    postgres_connect_timeout_seconds: int = 5
 
     # 局域网镜像库:默认关闭,测试和单机开发不会产生外部写入。
     sync_enabled: bool = False
@@ -50,6 +51,7 @@ class Settings(BaseSettings):
     milvus_host: str = "localhost"
     milvus_port: int = 19530
     milvus_collection: str = "knowledge_chunks"
+    milvus_uri: str = ""
 
     # Embedding
     embedding_api_key: str = ""

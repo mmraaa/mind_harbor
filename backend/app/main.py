@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, chat, doodles, favorites, health, journals, profile, reminders
+from app.api import auth, chat, doodles, favorites, health, journals, memory, profile, reminders
 from app.api.admin import router as admin_router
 from app.api.counselor.chat import router as counselor_chat_router
 from app.api.counselor.stats import router as counselor_stats_router
@@ -45,6 +45,7 @@ app.include_router(journals.router, prefix=settings.api_prefix)
 app.include_router(favorites.router, prefix=settings.api_prefix)
 app.include_router(reminders.router, prefix=settings.api_prefix)
 app.include_router(profile.router, prefix=settings.api_prefix)
+app.include_router(memory.router, prefix=settings.api_prefix)
 app.include_router(doodles.router, prefix=settings.api_prefix)
 app.include_router(counselor_chat_router, prefix=settings.api_prefix)
 app.include_router(counselor_stats_router, prefix=settings.api_prefix)

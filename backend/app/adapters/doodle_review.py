@@ -65,10 +65,6 @@ _CRISIS_KNOWLEDGE_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "knowledge" / "随手画危机支持与生命教育.md"
 )
 DOODLE_GENERATION_PATH = "/services/aigc/multimodal-generation/generation"
-_VALIDATION_IMAGE_DATA_URL = (
-    "data:image/png;base64,"
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL6eQAAAABJRU5ErkJggg=="
-)
 
 # 这些说明只基于识别到的文字，不把一个字当作用户的意图或诊断。它们既约束
 # 模型回应，也在模型再次输出通用模板时提供最小、可预测的教育性补充。
@@ -337,7 +333,7 @@ def response_usage_tokens(response: Any) -> tuple[int, int]:
 
 
 def validation_response_ok(response: Any) -> bool:
-    """Require a real multimodal output before reporting explicit validation success."""
+    """Require a non-empty model reply before reporting explicit validation success."""
     payload = response
     if hasattr(response, "json") and callable(response.json):
         try:
@@ -345,8 +341,32 @@ def validation_response_ok(response: Any) -> bool:
         except (TypeError, ValueError):
             return False
     output = _field(payload, "output", {}) or {}
-    choices = _field(output, "choices", []) or []
-    return bool(choices)
+    choices = _field(output, "choices", None) or _field(payload, "choices", []) or []
+    if choices:
+        message = _field(choices[0], "message", {}) or {}
+        content = _field(message, "content", "")
+        if isinstance(content, str):
+            return bool(content.strip())
+        if isinstance(content, list):
+            return any(str(_field(item, "text", "")).strip() for item in content)
+        if content:
+            return True
+    for field in ("text", "content"):
+        value = _field(output, field, None)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+def text_probe_status(response: Any) -> str:
+    """Classify a text-only inference probe by HTTP status and reply content."""
+    try:
+        status_code = int(_field(response, "status_code", 0) or 0)
+    except (TypeError, ValueError):
+        status_code = 0
+    if not 200 <= status_code < 300:
+        return connection_status(status_code)
+    return "reachable" if validation_response_ok(response) else "invalid"
 
 
 def connection_status(status_code: int, *, contract_probe: bool = False) -> str:
@@ -377,22 +397,18 @@ def doodle_generation_url(base_url: str) -> str:
 
 
 def doodle_validation_payload(model: str) -> dict[str, Any]:
-    """Build a minimal, non-user-content request for an administrator-approved model check."""
+    """Build a text-only request for an administrator-approved model check."""
     return {
         "model": model,
         "input": {
             "messages": [{
                 "role": "user",
-                "content": [
-                    {"image": _VALIDATION_IMAGE_DATA_URL},
-                    {"text": "请只回复 ok。"},
-                ],
+                "content": [{"text": "请只回复 ok。"}],
             }],
         },
         "parameters": {
             "enable_thinking": False,
             "temperature": 0,
-            "max_tokens": 32,
         },
     }
 

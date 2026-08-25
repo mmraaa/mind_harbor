@@ -10,6 +10,7 @@ from app.adapters.doodle_review import (
     doodle_generation_url,
     doodle_validation_payload,
     response_usage_tokens,
+    text_probe_status,
     validation_response_ok,
 )
 from app.admin_module.schemas import (
@@ -190,7 +191,7 @@ def update_api_config(
 
 @router.post("/api-configs/{service_id}/test")
 def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
-    """探测服务地址和接口契约，不发送用户内容，也不消耗模型 Token。"""
+    """探测服务地址；画作审核发送一句固定文本并要求模型返回非空回复。"""
     if service_id not in SERVICE_META:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "API 服务不存在")
     ensure_rows(db)
@@ -202,7 +203,8 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "请先配置 API Key")
     try:
         probe_url = row.base_url.rstrip("/")
-        # OpenAI 兼容服务公开 /models；画作审核探测真实 DashScope 多模态路径。
+        # OpenAI 兼容服务公开 /models；画作审核必须走一次真实文本推理，
+        # 这样不会把“GET 路径可达”误报成模型可用，也不会上传图片。
         if service_id != "doodle_review":
             probe_url += "/models"
             response = httpx.get(
@@ -213,15 +215,35 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
             )
         else:
             probe_url = doodle_generation_url(probe_url)
-            # 不发送图片或 prompt，GET 只验证真实路由；405/422 代表路径存在。
-            response = httpx.get(
+            response = httpx.post(
                 probe_url,
                 headers={"Authorization": f"Bearer {api_key}"},
+                json=doodle_validation_payload(row.model),
                 timeout=min(max(row.timeout_seconds, 1), 10),
                 trust_env=False,
             )
     except httpx.HTTPError:
         return {"service_id": service_id, "status": "unreachable"}
+    if service_id == "doodle_review":
+        probe_status = text_probe_status(response)
+        prompt_tokens, completion_tokens = response_usage_tokens(response)
+        if probe_status == "reachable":
+            record_usage(
+                service_id,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+        elif probe_status != "unreachable":
+            record_usage(service_id, failed=True)
+        return {
+            "service_id": service_id,
+            "status": probe_status,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+        }
     return {
         "service_id": service_id,
         "status": _connection_status(response.status_code, contract_probe=service_id == "doodle_review"),

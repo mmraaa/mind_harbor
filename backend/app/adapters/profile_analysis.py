@@ -7,7 +7,7 @@ import re
 
 import httpx
 
-from app.core.config import get_settings
+from app.services.api_config import record_usage, resolve_service
 
 
 SYSTEM_PROMPT = """你是心理陪伴产品的用户画像分析器，不做心理诊断，不判断疾病或风险。
@@ -33,33 +33,49 @@ def _extract_json(text: str) -> dict | None:
 
 
 def analyze_transcript(transcript: str) -> dict:
-    settings = get_settings()
-    if not settings.profile_analysis_api_key or not settings.profile_analysis_base_url:
-        raise RuntimeError("画像分析服务未配置")
-    payload = {
-        "model": settings.profile_analysis_model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": transcript[:12000]},
-        ],
-        "temperature": 0.1,
-        "stream": False,
-        "response_format": {"type": "json_object"},
-    }
-    response = httpx.post(
-        settings.profile_analysis_base_url.rstrip("/") + "/chat/completions",
-        headers={"Authorization": f"Bearer {settings.profile_analysis_api_key}", "Content-Type": "application/json"},
-        json=payload,
-        timeout=settings.profile_analysis_timeout_seconds,
-        trust_env=False,
-    )
-    response.raise_for_status()
-    data = response.json()
-    choices = data.get("choices") or []
-    if not choices:
-        raise RuntimeError("画像分析服务返回为空")
-    content = (choices[0].get("message") or {}).get("content") or ""
-    parsed = _extract_json(content)
-    if not parsed or not isinstance(parsed.get("observations", []), list):
-        raise ValueError("画像分析服务返回的 JSON 无效")
-    return parsed
+    primary = resolve_service("profile_analysis")
+    services = [primary] + ([primary.fallback] if primary.fallback else [])
+    last_error: Exception | None = None
+    for service in services:
+        if not service or not service.enabled or not service.api_key or not service.base_url or not service.model:
+            continue
+        payload = {
+            "model": service.model,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": transcript[:12000]},
+            ],
+            "temperature": 0.1,
+            "stream": False,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            response = httpx.post(
+                service.base_url.rstrip("/") + "/chat/completions",
+                headers={"Authorization": f"Bearer {service.api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=service.timeout_seconds,
+                trust_env=False,
+            )
+            response.raise_for_status()
+            data = response.json()
+            choices = data.get("choices") or []
+            if not choices:
+                raise RuntimeError("画像分析服务返回为空")
+            content = (choices[0].get("message") or {}).get("content") or ""
+            parsed = _extract_json(content)
+            if not parsed or not isinstance(parsed.get("observations", []), list):
+                raise ValueError("画像分析服务返回的 JSON 无效")
+            usage = data.get("usage") or {}
+            record_usage(
+                primary.service_id,
+                prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                completion_tokens=int(usage.get("completion_tokens") or 0),
+            )
+            return parsed
+        except Exception as exc:  # noqa: BLE001 - 主服务失败时按管理配置尝试备用服务
+            last_error = exc
+            record_usage(primary.service_id, failed=True)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("画像分析服务未配置")

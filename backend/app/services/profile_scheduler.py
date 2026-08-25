@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.database import SessionLocal
 from app.services.profile_analysis import run_daily_profile_analysis
+from app.services.user_memory import run_daily_memory_consolidation
 
 logger = logging.getLogger(__name__)
 BEIJING = timezone(timedelta(hours=8))
@@ -31,5 +32,9 @@ async def run_daily_loop(stop: asyncio.Event) -> None:
             run_daily_profile_analysis(db, today=datetime.now(BEIJING).date())
         except Exception:  # noqa: BLE001
             logger.exception("每日画像分析任务失败")
+        try:
+            run_daily_memory_consolidation(db)
+        except Exception:  # noqa: BLE001
+            logger.exception("每日记忆整理任务失败")
         finally:
             db.close()

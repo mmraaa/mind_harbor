@@ -14,6 +14,7 @@ from collections import Counter
 from sqlalchemy.orm import Session
 
 from app.adapters import llm
+from app.services import user_memory as user_memory_service
 from app.models.emotion import Emotion
 from app.models.memory import UserMemory
 from app.models.session import ChatSession, Message
@@ -85,18 +86,12 @@ def _emotion_profile(db: Session, user_id: int, recent_n: int = EMOTION_PROFILE_
     return lines
 
 
-def _long_term_profile(db: Session, user_id: int) -> str:
-    """长期画像:UserMemory 事实 + 情绪日志聚合画像。"""
+def _long_term_profile(db: Session, user_id: int, current_text: str | None = None) -> str:
+    """长期记忆摘要 + 兼容的情绪日志聚合画像。"""
     lines = []
-    facts = (
-        db.query(UserMemory)
-        .filter_by(user_id=user_id)
-        .order_by(UserMemory.importance.desc(), UserMemory.id.desc())
-        .limit(10)
-        .all()
-    )
-    if facts:
-        lines.append("用户画像:" + " ; ".join(f.content for f in facts))
+    context = user_memory_service.memory_context_for_chat(db, user_id, current_text)
+    if context:
+        lines.append(context)
     lines.extend(_emotion_profile(db, user_id))
     return "\n".join(lines)
 
@@ -110,7 +105,8 @@ def assemble_context(
 ) -> str:
     """拼装对话上下文(供 system 提示词):长期画像 + 会话摘要 + 短期窗口 + 知识参考。"""
     parts = []
-    profile = _long_term_profile(db, user_id)
+    current_text = next((message.content for message in reversed(messages) if message.role == "user"), None)
+    profile = _long_term_profile(db, user_id, current_text)
     if profile:
         parts.append("【长期记忆】\n" + profile)
     if session.summary:
