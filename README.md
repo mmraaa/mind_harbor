@@ -12,10 +12,13 @@
 
 ### 1. 数据库(PostgreSQL 业务数据 + Milvus 向量库)
 
-```bash
-docker compose up -d postgres
-# 或使用本地已有 PostgreSQL;Milvus v3.0.0 已部署于本机 Docker(端口 19530),无需启动
-```
+使用docker或本机部署的方式部署
+
+|数据库|版本|端口号|
+|---       |---     |---|
+|Postgresql| 18     | 5432|
+|Milvus    | v3.0.0 | 19530|
+> 团队成员(虚拟局域网):172.16.2.91 已部署
 
 ### 2. 后端
 
@@ -24,6 +27,14 @@ cd backend
 cp .env.example .env          # 填入 LLM/Embedding/TTS 密钥
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+
+
+# 数据库
+python scripts/init_db.py     # 建表
+python scripts/seed.py        # 种子数据(admin/counselor/student + 资源)
+
+
+# 启动服务
 uvicorn app.main:app --reload --host 0.0.0.0
 # 本机:http://localhost:8000/api/v1/health ;团队成员(虚拟局域网):http://172.16.2.91:8000/api/v1/health
 ```
@@ -32,7 +43,7 @@ uvicorn app.main:app --reload --host 0.0.0.0
 
 ```bash
 cd frontend
-pnpm install
+pnpm install # 或使用 npm install 和 npm run dev
 pnpm dev
 # http://localhost:5173
 ```
