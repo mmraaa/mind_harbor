@@ -39,7 +39,6 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 # 开发机(虚拟局域网):http://172.16.2.91:8000/api/v1/health
 
 # 数据库
-docker compose up -d postgres # 或本地 PostgreSQL;Milvus v3.0.0 已部署于本机 Docker(端口 19530)
 python scripts/init_db.py     # 建表
 python scripts/seed.py        # 种子数据(admin/counselor/student + 资源)
 
@@ -67,8 +66,6 @@ pnpm build                    # tsc -b && vite build
 |---|---|
 | 前端团队 | 学生端 / 管理端 / 咨询师端全部页面(2026-08-15 移交;接口契约见 `docs/api.md`) |
 | 后端 | API、服务层、AI 编排(RAG/Agent/对话/记忆)、数据访问;咨询师端对话 Agent(学生情绪统计/日记/异常识别) |
-
-> 注意:`frontend/src` 已从仓库移除(交给前端团队),只保留脚手架配置。后端开发不依赖前端。
 
 ### Git 工作流
 
