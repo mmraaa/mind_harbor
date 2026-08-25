@@ -2,8 +2,9 @@ import { CalendarDays, ChevronLeft, ChevronRight, LockKeyhole, Sparkles } from '
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getMyJournal, listMyJournals, type JournalItem } from '../../api/journals'
-import { getErrorMessage } from '../../api/client'
+import { getErrorMessage, isStudentDeletedResourceError, studentDeletedKind } from '../../api/client'
 import { emotionDisplay } from '../../data/emotions'
+import { StudentDeletedNotice } from '../../components/StudentDeletedNotice'
 
 const PAGE_SIZE = 8
 
@@ -235,6 +236,7 @@ export function JournalDetailPage() {
   const journalId = Number(id)
   const [item, setItem] = useState<JournalItem | null>(null)
   const [error, setError] = useState('')
+  const [deleted, setDeleted] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -249,7 +251,12 @@ export function JournalDetailPage() {
         const row = await getMyJournal(journalId)
         if (alive) setItem(row)
       } catch (err) {
-        if (alive) setError(getErrorMessage(err, '无法加载日记详情'))
+        if (!alive) return
+        if (isStudentDeletedResourceError(err) || studentDeletedKind(err) === 'journal') {
+          setDeleted(true)
+        } else {
+          setError(getErrorMessage(err, '无法加载日记详情'))
+        }
       } finally {
         if (alive) setLoading(false)
       }
@@ -261,6 +268,14 @@ export function JournalDetailPage() {
 
   const when = entryWhen(item?.created_at)
   const emo = emotionDisplay(item?.emotion?.category)
+
+  if (deleted) {
+    return (
+      <div className="journal-workspace">
+        <StudentDeletedNotice kind="journal" />
+      </div>
+    )
+  }
 
   return (
     <div className="journal-workspace">

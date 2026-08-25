@@ -142,6 +142,12 @@ export async function listMessages(sessionId: number): Promise<ChatMessage[]> {
   return data
 }
 
+/** DELETE /chat/sessions/{id} — 对学生隐藏会话(软删);咨询师侧仍可见 */
+export async function hideSession(sessionId: number): Promise<{ id: number; hidden: boolean }> {
+  const { data } = await api.delete<{ id: number; hidden: boolean }>(`/chat/sessions/${sessionId}`)
+  return data
+}
+
 /** POST /chat/sessions/{id}/end — 手动结束并生成日记 */
 export async function endSession(sessionId: number): Promise<JournalPayload> {
   const { data } = await api.post<JournalPayload>(`/chat/sessions/${sessionId}/end`)

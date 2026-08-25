@@ -7,7 +7,10 @@ from app.core.database import Base
 
 
 class ChatSession(Base):
-    """一次对话会话;risk_level: low / medium / high。"""
+    """一次对话会话;risk_level: low / medium / high。
+
+    hidden_from_student_at: 学生对自己隐藏(软删);咨询师侧仍可见。
+    """
 
     __tablename__ = "sessions"
 
@@ -18,6 +21,9 @@ class ChatSession(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     risk_level: Mapped[str] = mapped_column(String(16), default="low")
     status: Mapped[str] = mapped_column(String(16), default="active")
+    hidden_from_student_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
     messages: Mapped[list["Message"]] = relationship(back_populates="session")
 

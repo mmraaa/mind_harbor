@@ -10,9 +10,10 @@ import {
   type JournalPayload,
   type ToolCardPayload,
 } from '../../api/chat'
-import { getErrorMessage } from '../../api/client'
+import { getErrorMessage, isStudentDeletedResourceError } from '../../api/client'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
 import { BreathingModal } from '../../components/BreathingModal'
+import { StudentDeletedNotice } from '../../components/StudentDeletedNotice'
 import { ToolCards } from '../../components/ToolCards'
 import { SentenceAudioQueue } from '../../lib/audioChunkPlayer'
 import { speechRecognitionSupported, startSpeechRecognition } from '../../lib/speechInput'
@@ -40,6 +41,7 @@ export default function ChatPage() {
 
   const [draft, setDraft] = useState('')
   const [ending, setEnding] = useState(false)
+  const [deletedNotice, setDeletedNotice] = useState(false)
   const [breathingModalOpen, setBreathingModalOpen] = useState(false)
   const [voiceReply, setVoiceReply] = useState(() => {
     try {
@@ -65,7 +67,9 @@ export default function ChatPage() {
   }, [])
 
   useEffect(() => {
-    void hydrate()
+    void hydrate().catch((err) => {
+      if (isStudentDeletedResourceError(err)) setDeletedNotice(true)
+    })
   }, [hydrate])
 
   useEffect(() => {
@@ -266,6 +270,14 @@ export default function ChatPage() {
     } catch (err) {
       setDraftError(getErrorMessage(err, '收藏操作失败'))
     }
+  }
+
+  if (deletedNotice) {
+    return (
+      <div className="companion-page">
+        <StudentDeletedNotice kind="session" />
+      </div>
+    )
   }
 
   if (!hydrated) {

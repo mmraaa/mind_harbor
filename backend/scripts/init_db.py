@@ -109,6 +109,14 @@ def ensure_schema_compatibility(bind) -> None:
                     f'ALTER TABLE user_memories ADD COLUMN IF NOT EXISTS "{column}" {definition}'
                 )
 
+    if "sessions" in tables:
+        existing = {column["name"] for column in inspect(bind).get_columns("sessions")}
+        if "hidden_from_student_at" not in existing:
+            statements.append(
+                'ALTER TABLE sessions ADD COLUMN IF NOT EXISTS '
+                '"hidden_from_student_at" TIMESTAMP WITH TIME ZONE'
+            )
+
     if statements:
         with bind.begin() as connection:
             for statement in statements:

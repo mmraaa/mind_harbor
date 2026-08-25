@@ -1,7 +1,8 @@
-import { Anchor, ChevronLeft, ChevronRight, MessageCircle } from 'lucide-react'
+import { Anchor, ChevronLeft, ChevronRight, MessageCircle, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
+  hideSession,
   listMessages,
   listSessionsPage,
   SESSION_PAGE_SIZE,
@@ -9,8 +10,9 @@ import {
   type ChatSession,
   type SessionStatusFilter,
 } from '../../api/chat'
-import { getErrorMessage } from '../../api/client'
+import { getErrorMessage, isStudentDeletedResourceError } from '../../api/client'
 import { MarkdownMessage } from '../../components/MarkdownMessage'
+import { StudentDeletedNotice } from '../../components/StudentDeletedNotice'
 import { useChatStore } from '../../stores/chat'
 
 const TAB_LABELS: Record<SessionStatusFilter, string> = {
@@ -100,13 +102,17 @@ function PortholePreview({
   messages,
   loadingMessages,
   replaying,
+  hiding,
   onOpen,
+  onHide,
 }: {
   session: ChatSession | null
   messages: ChatMessage[]
   loadingMessages: boolean
   replaying: boolean
+  hiding: boolean
   onOpen: () => void
+  onHide: () => void
 }) {
   if (!session) {
     return (
@@ -129,9 +135,20 @@ function PortholePreview({
             {closed ? <span className="chip">已结束 · 只读</span> : <span className="chip chip--live">进行中</span>}
           </div>
         </div>
-        <button type="button" className="primary-button" disabled={replaying} onClick={onOpen}>
-          {replaying ? '打开中…' : closed ? '回放浏览' : '继续这段陪伴'}
-        </button>
+        <div className="porthole-preview__actions">
+          <button type="button" className="primary-button" disabled={replaying || hiding} onClick={onOpen}>
+            {replaying ? '打开中…' : closed ? '回放浏览' : '继续这段陪伴'}
+          </button>
+          <button
+            type="button"
+            className="ghost-button porthole-preview__hide"
+            disabled={replaying || hiding}
+            onClick={onHide}
+          >
+            <Trash2 size={14} aria-hidden />
+            {hiding ? '删除中…' : '删除'}
+          </button>
+        </div>
       </header>
 
       <div className="porthole-preview__stream companion-stream">
@@ -163,6 +180,7 @@ export default function HistoryPage() {
   const navigate = useNavigate()
   const openSession = useChatStore((s) => s.openSession)
   const currentSessionId = useChatStore((s) => s.sessionId)
+  const startNewSession = useChatStore((s) => s.startNewSession)
 
   const [tab, setTab] = useState<SessionStatusFilter>('active')
   const [items, setItems] = useState<ChatSession[]>([])
@@ -180,6 +198,8 @@ export default function HistoryPage() {
   const [pageLoading, setPageLoading] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [replaying, setReplaying] = useState(false)
+  const [hiding, setHiding] = useState(false)
+  const [openDeleted, setOpenDeleted] = useState(false)
   const [error, setError] = useState('')
   const [jumpDraft, setJumpDraft] = useState('1')
 
@@ -296,14 +316,53 @@ export default function HistoryPage() {
       await openSession(sessionId)
       navigate('/student')
     } catch (err) {
-      setError(getErrorMessage(err, '无法打开该会话'))
+      if (isStudentDeletedResourceError(err)) {
+        setOpenDeleted(true)
+      } else {
+        setError(getErrorMessage(err, '无法打开该会话'))
+      }
     } finally {
       setReplaying(false)
     }
   }
 
+  async function hideActiveSession() {
+    if (activeId == null || hiding) return
+    const ok = window.confirm(
+      '将从你的历史与情绪日记中移除该会话（收藏和提醒仍保留）。确定删除吗？',
+    )
+    if (!ok) return
+    setHiding(true)
+    setError('')
+    try {
+      await hideSession(activeId)
+      if (currentSessionId === activeId) startNewSession()
+      const data = await fetchPage(tab, page)
+      if (data.items.length === 0 && page > 1) {
+        await fetchPage(tab, page - 1)
+      }
+      const [activeTotal, closedTotal] = await Promise.all([
+        listSessionsPage('active', 1, 1),
+        listSessionsPage('closed', 1, 1),
+      ])
+      setTabTotals({ active: activeTotal.total, closed: closedTotal.total })
+    } catch (err) {
+      setError(getErrorMessage(err, '删除会话失败'))
+    } finally {
+      setHiding(false)
+    }
+  }
+
   const bothEmpty =
     catalogReady && tabTotals.active === 0 && tabTotals.closed === 0
+
+  if (openDeleted) {
+    return (
+      <div className="archive-page">
+        <StudentDeletedNotice kind="session" />
+      </div>
+    )
+  }
 
   return (
     <div className="archive-page archive-page--tide">
@@ -312,7 +371,7 @@ export default function HistoryPage() {
           <p className="page-header__eyebrow">对话轨迹</p>
           <h1>历史会话</h1>
           <p className="page-header__description">
-            进行中的对话可以继续；已结束的只能回放浏览，不能续聊。
+            进行中的对话可以继续；已结束的只能回放浏览，不能续聊。删除后仅对你隐藏，对应日记也会一并隐藏。
           </p>
         </div>
       </header>
@@ -450,7 +509,9 @@ export default function HistoryPage() {
             messages={messages}
             loadingMessages={loadingMessages}
             replaying={replaying}
+            hiding={hiding}
             onOpen={() => activeId != null && void openInChat(activeId)}
+            onHide={() => void hideActiveSession()}
           />
         </div>
       )}

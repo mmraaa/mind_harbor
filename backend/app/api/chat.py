@@ -7,6 +7,7 @@ type 枚举:text(回复增量/整段)、tool_card(工具卡片)、journal(会话
 
 import json
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
@@ -24,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
+STUDENT_DELETED_SESSION_MSG = "你已删除该会话"
+
 
 def _format_event(evt: dict) -> str:
     return f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
@@ -40,6 +43,18 @@ def _session_item(s: ChatSession) -> dict:
     }
 
 
+def _own_visible_session(db: Session, user: User, session_id: int) -> ChatSession:
+    """学生读路径:本人且未对学生隐藏;隐藏与不存在统一 404 文案。"""
+    session = db.get(ChatSession, session_id)
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
+    if session.user_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
+    if session.hidden_from_student_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, STUDENT_DELETED_SESSION_MSG)
+    return session
+
+
 @router.get("/sessions")
 def list_sessions(
     status: str = Query(..., pattern="^(active|closed)$"),
@@ -52,8 +67,13 @@ def list_sessions(
 
     - `status=active`：进行中（可继续对话）；
     - `status=closed`：已结束（只读回放）。
+    已对学生隐藏的会话不返回。
     """
-    q = db.query(ChatSession).filter_by(user_id=user.id)
+    q = (
+        db.query(ChatSession)
+        .filter_by(user_id=user.id)
+        .filter(ChatSession.hidden_from_student_at.is_(None))
+    )
     if status == "closed":
         q = q.filter(ChatSession.status == "closed")
     else:
@@ -82,13 +102,8 @@ def get_session(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """单个会话元数据（仅本人）。"""
-    session = db.get(ChatSession, session_id)
-    if session is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
-    if session.user_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
-    return _session_item(session)
+    """单个会话元数据（仅本人,未隐藏）。"""
+    return _session_item(_own_visible_session(db, user, session_id))
 
 
 @router.get("/sessions/{session_id}/messages")
@@ -97,12 +112,8 @@ def list_messages(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    """会话历史消息(仅本人);非本人 403、不存在 404。"""
-    session = db.get(ChatSession, session_id)
-    if session is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
-    if session.user_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
+    """会话历史消息(仅本人);非本人 403、不存在/已隐藏 404。"""
+    _own_visible_session(db, user, session_id)
     rows = (
         db.query(Message)
         .filter_by(session_id=session_id)
@@ -123,6 +134,28 @@ def list_messages(
     ]
 
 
+@router.delete("/sessions/{session_id}")
+def hide_session(
+    session_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """对学生隐藏会话(软删):进行中/已结束均可;咨询师侧仍可见。
+
+    幂等:已隐藏直接返回成功。不删除 messages / journals / favorites / reminders。
+    """
+    session = db.get(ChatSession, session_id)
+    if session is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
+    if session.user_id != user.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权操作该会话")
+    if session.hidden_from_student_at is None:
+        session.hidden_from_student_at = datetime.now(timezone.utc)
+        db.add(session)
+        db.commit()
+    return {"id": session.id, "hidden": True}
+
+
 @router.post("/sessions/{session_id}/end")
 def end_session(
     session_id: int,
@@ -133,11 +166,7 @@ def end_session(
 
     幂等:会话已有日记时直接返回该日记,不重复生成。
     """
-    session = db.get(ChatSession, session_id)
-    if session is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
-    if session.user_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "无权操作该会话")
+    session = _own_visible_session(db, user, session_id)
 
     existing = (
         db.query(Journal)

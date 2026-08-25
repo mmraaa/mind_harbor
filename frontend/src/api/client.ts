@@ -72,3 +72,16 @@ export function getErrorMessage(err: unknown, fallback = '请求失败，请稍�
   if (err instanceof Error) return err.message
   return fallback
 }
+
+/** 学生软删会话/笔记后的专用 404 文案 */
+export function isStudentDeletedResourceError(err: unknown): boolean {
+  const msg = getErrorMessage(err, '')
+  return msg.includes('你已删除该会话') || msg.includes('你已删除该笔记')
+}
+
+export function studentDeletedKind(err: unknown): 'session' | 'journal' | null {
+  const msg = getErrorMessage(err, '')
+  if (msg.includes('你已删除该笔记')) return 'journal'
+  if (msg.includes('你已删除该会话')) return 'session'
+  return null
+}

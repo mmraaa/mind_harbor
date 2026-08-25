@@ -102,9 +102,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: toUiMessages(rows),
         hydrated: true,
       })
-    } catch {
+    } catch (err) {
       sessionStorage.removeItem(SESSION_KEY)
       set({ sessionId: null, sessionStatus: null, messages: [], hydrated: true })
+      throw err
     }
   },
 

@@ -329,3 +329,80 @@ def test_favorite_flow(client, seed_user, db):
     d = client.delete(f"/api/v1/favorites/{m.id}", headers=h)
     assert d.status_code == 200
     assert db.query(Favorite).filter_by(user_id=seed_user.id, message_id=m.id).first() is None
+
+
+# ---------- 学生对自己隐藏会话(软删) ----------
+
+
+def test_hide_session_hides_from_student_keeps_journal_for_counselor_path(client, seed_user, db):
+    """隐藏后:学生列表/详情/日记不可见;库内会话与日记仍在。"""
+    s = ChatSession(user_id=seed_user.id, title="可藏会话", status="closed", summary="摘要")
+    db.add(s)
+    db.flush()
+    j = Journal(user_id=seed_user.id, session_id=s.id, summary="日记摘要", content="正文", mood_score=6)
+    db.add(j)
+    db.commit()
+
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()[
+        "access_token"
+    ]
+    h = {"Authorization": f"Bearer {token}"}
+
+    hide = client.delete(f"/api/v1/chat/sessions/{s.id}", headers=h)
+    assert hide.status_code == 200
+    assert hide.json() == {"id": s.id, "hidden": True}
+
+    # 幂等
+    hide2 = client.delete(f"/api/v1/chat/sessions/{s.id}", headers=h)
+    assert hide2.status_code == 200
+
+    listed = client.get("/api/v1/chat/sessions?status=closed", headers=h)
+    assert listed.status_code == 200
+    assert all(item["id"] != s.id for item in listed.json()["items"])
+
+    meta = client.get(f"/api/v1/chat/sessions/{s.id}", headers=h)
+    assert meta.status_code == 404
+    assert meta.json()["detail"] == "你已删除该会话"
+
+    msgs = client.get(f"/api/v1/chat/sessions/{s.id}/messages", headers=h)
+    assert msgs.status_code == 404
+
+    journals = client.get("/api/v1/journals/mine", headers=h)
+    assert journals.status_code == 200
+    assert all(item["id"] != j.id for item in journals.json())
+
+    detail = client.get(f"/api/v1/journals/mine/{j.id}", headers=h)
+    assert detail.status_code == 404
+    assert detail.json()["detail"] == "你已删除该笔记"
+
+    db.refresh(s)
+    assert s.hidden_from_student_at is not None
+    assert db.get(Journal, j.id) is not None
+
+
+def test_hide_active_session_allowed(client, seed_user, db):
+    s = ChatSession(user_id=seed_user.id, title="进行中", status="active")
+    db.add(s)
+    db.commit()
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()[
+        "access_token"
+    ]
+    h = {"Authorization": f"Bearer {token}"}
+    r = client.delete(f"/api/v1/chat/sessions/{s.id}", headers=h)
+    assert r.status_code == 200
+    listed = client.get("/api/v1/chat/sessions?status=active", headers=h)
+    assert all(item["id"] != s.id for item in listed.json()["items"])
+
+
+def test_hide_session_forbidden_for_others(client, seed_user, db):
+    other = User(role="student", username="hide2", name="他人", password_hash="x")
+    db.add(other)
+    db.flush()
+    s = ChatSession(user_id=other.id, title="他人的")
+    db.add(s)
+    db.commit()
+    token = client.post("/api/v1/auth/login", json={"username": "stu1", "password": "pass123"}).json()[
+        "access_token"
+    ]
+    r = client.delete(f"/api/v1/chat/sessions/{s.id}", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 403

@@ -71,6 +71,8 @@ def get_or_create_session(db: Session, user: User, session_id: int | None) -> Ch
         raise HTTPException(status.HTTP_404_NOT_FOUND, "会话不存在")
     if session.user_id != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "无权访问该会话")
+    if session.hidden_from_student_at is not None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "你已删除该会话")
     if session.status == "closed":
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
