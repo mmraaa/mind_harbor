@@ -333,6 +333,63 @@
   opacity: 0.68;
 }
 
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap .text-input {
+  padding-right: 44px;
+}
+
+.password-visibility-button {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-visibility-button:hover,
+.password-visibility-button:focus-visible {
+  background: var(--sage-pale);
+  color: var(--sage-dark);
+  outline: none;
+}
+
+.account-password-hint {
+  margin-top: -8px;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+}
+
+.account-feedback {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: -4px;
+  font-family: var(--font-ui);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.account-feedback--success {
+  color: var(--sage-dark);
+}
+
+.account-feedback--error {
+  color: #a8433d;
+}
+
 .account-actions,
 .account-security-footer {
   display: flex;

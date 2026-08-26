@@ -21,6 +21,8 @@ from app.schemas.user import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# 账号和角色是认证绑定字段，个人资料接口仍需明确拒绝修改。
+IMMUTABLE_FIELDS = {"role", "username"}
 ACCOUNT_CHANGE_INTERVAL = timedelta(days=7)
 
 
@@ -95,7 +97,8 @@ def account(user: User = Depends(get_current_user)) -> dict:
         "name": user.name,
         "gender": user.gender or "",
         "role": user.role,
-        "next_username_change_at": _next_change(user.last_username_changed_at),
+        # 展示用户名不再有修改冷却；保留字段以兼容既有前端响应结构。
+        "next_username_change_at": None,
         "next_password_change_at": _next_change(user.last_password_changed_at),
     }
 
@@ -108,21 +111,12 @@ def update_account(
 ) -> dict:
     if body.username is not None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "账号不可修改")
-    now = datetime.now(timezone.utc)
     values = body.model_dump(exclude_unset=True, exclude={"username"})
     display_username = values.pop("display_username", None)
     if display_username is not None:
         display_username = display_username.strip()
         if not display_username:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "用户名不能为空")
-        last_changed = user.last_username_changed_at
-        if last_changed and now - (last_changed if last_changed.tzinfo else last_changed.replace(tzinfo=timezone.utc)) < ACCOUNT_CHANGE_INTERVAL:
-            next_at = _next_change(user.last_username_changed_at)
-            raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS,
-                detail={"message": "用户名每 7 天只能修改一次", "next_username_change_at": next_at.isoformat()},
-                headers={"X-Next-Username-Change-At": next_at.isoformat()},
-            )
         duplicate = (
             db.query(User)
             .filter(
@@ -134,7 +128,6 @@ def update_account(
         if duplicate:
             raise HTTPException(status.HTTP_409_CONFLICT, "用户名已被使用")
         user.display_username = display_username.strip()
-        user.last_username_changed_at = now
     for field in ("name", "gender"):
         if field in values:
             value = values[field].strip()
