@@ -2,12 +2,14 @@ import { authApi } from '../features/auth/authApi'
 import type { Role } from '../features/auth/roles'
 import { api, type TokenResponse, type UserOut } from './client'
 
-function toTeamUser(user: { id: number; username: string; nickname: string; role: Role }): UserOut {
+function toTeamUser(user: { id: number; username: string; nickname: string; role: Role; display_username?: string }): UserOut {
   return {
     id: user.id,
     username: user.username,
     name: user.nickname,
     role: user.role,
+    display_username: user.display_username || user.nickname,
+    gender: '',
   }
 }
 

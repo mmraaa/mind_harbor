@@ -10,6 +10,7 @@ import HistoryPage from './pages/student/HistoryPage'
 import JournalPage, { JournalDetailPage } from './pages/student/JournalPage'
 import RemindersPage from './pages/student/RemindersPage'
 import ProfilePage from './pages/student/ProfilePage'
+import AccountPage from './pages/student/AccountPage'
 import AdminLayout from './pages/admin/AdminLayout'
 import {
   AdminOverviewPage,
@@ -48,6 +49,7 @@ export default function App() {
             <Route path="favorites" element={<FavoritesPage />} />
             <Route path="history" element={<HistoryPage />} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="account" element={<AccountPage />} />
           </Route>
         </Route>
 

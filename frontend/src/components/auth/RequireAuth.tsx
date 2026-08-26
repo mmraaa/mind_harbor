@@ -9,6 +9,9 @@ type RoleGuardProps = {
 export function AuthBootstrap({ children }: { children: React.ReactNode }) {
   const bootstrap = useAuthStore((s) => s.bootstrap)
   const bootstrapped = useAuthStore((s) => s.bootstrapped)
+  const bootstrapError = useAuthStore((s) => s.bootstrapError)
+  const token = useAuthStore((s) => s.token)
+  const logout = useAuthStore((s) => s.logout)
 
   useEffect(() => {
     void bootstrap()
@@ -18,6 +21,22 @@ export function AuthBootstrap({ children }: { children: React.ReactNode }) {
     return (
       <div style={{ padding: '30vh 24px', textAlign: 'center', color: 'var(--muted)' }}>
         正在确认登录状态…
+      </div>
+    )
+  }
+
+  if (token && bootstrapError) {
+    return (
+      <div style={{ padding: '24vh 24px', textAlign: 'center', color: 'var(--muted)' }}>
+        <p>{bootstrapError}</p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, marginTop: 20 }}>
+          <button className="primary-button" type="button" onClick={() => void bootstrap()}>
+            重试
+          </button>
+          <button className="ghost-button" type="button" onClick={logout}>
+            返回登录
+          </button>
+        </div>
       </div>
     )
   }

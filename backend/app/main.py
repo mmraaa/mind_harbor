@@ -1,23 +1,34 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import auth, chat, doodles, favorites, health, journals, memory, profile, reminders
 from app.api.admin import router as admin_router
 from app.api.counselor.chat import router as counselor_chat_router
 from app.api.counselor.stats import router as counselor_stats_router
 from app.core.config import get_settings
+from app.core.database import engine
 from app.core.logging import setup_logging
+from app.core.schema import ensure_user_account_schema
 from app.services.profile_scheduler import run_daily_loop
 
 setup_logging()
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    try:
+        ensure_user_account_schema(engine)
+    except SQLAlchemyError:
+        # The API remains available while the remote development database is
+        # offline; request dependencies then provide the user-facing 503.
+        logger.warning("Could not apply user account schema upgrade at startup", exc_info=True)
     stop = asyncio.Event()
     task = asyncio.create_task(run_daily_loop(stop))
     try:

@@ -8,7 +8,7 @@ import re
 import httpx
 
 from app.adapters import llm
-from app.core.config import get_settings
+from app.services.api_config import record_usage, resolve_service
 
 
 SYSTEM_PROMPT = """你是 MindHarbor 的长期记忆候选提取器。
@@ -45,9 +45,57 @@ def _extract_json(text: str) -> dict | None:
             return None
 
 
-def _profile_configured() -> bool:
-    settings = get_settings()
-    return bool(settings.profile_analysis_api_key and settings.profile_analysis_base_url)
+def _profile_service_configured() -> bool:
+    service = resolve_service("profile_analysis")
+    return bool(service.enabled and service.api_key and service.base_url and service.model)
+
+
+def _complete_with_profile_service(system_prompt: str, user_content: str, *, temperature: float) -> dict:
+    """Use the managed profile service so configuration, fallback, and usage stay aligned."""
+    primary = resolve_service("profile_analysis")
+    services = [primary] + ([primary.fallback] if primary.fallback else [])
+    last_error: Exception | None = None
+    for service in services:
+        if not service or not service.enabled or not service.api_key or not service.base_url or not service.model:
+            continue
+        try:
+            response = httpx.post(
+                service.base_url.rstrip("/") + "/chat/completions",
+                headers={"Authorization": f"Bearer {service.api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": service.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content[:12000]},
+                    ],
+                    "temperature": temperature,
+                    "stream": False,
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=service.timeout_seconds,
+                trust_env=False,
+            )
+            response.raise_for_status()
+            data = response.json()
+            choices = data.get("choices") or []
+            if not choices:
+                raise RuntimeError("记忆提取服务返回为空")
+            parsed = _extract_json((choices[0].get("message") or {}).get("content") or "")
+            if not isinstance(parsed, dict):
+                raise ValueError("记忆提取服务返回的 JSON 无效")
+            usage = data.get("usage") or {}
+            record_usage(
+                primary.service_id,
+                prompt_tokens=int(usage.get("prompt_tokens") or 0),
+                completion_tokens=int(usage.get("completion_tokens") or 0),
+            )
+            return parsed
+        except Exception as exc:  # noqa: BLE001 - 主服务失败时尝试管理员配置的备用服务
+            last_error = exc
+    if last_error is not None:
+        record_usage(primary.service_id, failed=True)
+        raise last_error
+    raise RuntimeError("人物画像分析服务未配置")
 
 
 def _fallback_memory_type(content: str) -> str:
@@ -70,27 +118,12 @@ def classify_manual_memory(content: str) -> str:
     """由模型分类用户手动配置；任何上游失败都安全降级为规则分类。"""
     fallback = _fallback_memory_type(content)
     try:
-        if _profile_configured():
-            settings = get_settings()
-            response = httpx.post(
-                settings.profile_analysis_base_url.rstrip("/") + "/chat/completions",
-                headers={"Authorization": f"Bearer {settings.profile_analysis_api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": settings.profile_analysis_model,
-                    "messages": [
-                        {"role": "system", "content": MANUAL_CLASSIFICATION_PROMPT},
-                        {"role": "user", "content": content[:1000]},
-                    ],
-                    "temperature": 0,
-                    "stream": False,
-                    "response_format": {"type": "json_object"},
-                },
-                timeout=settings.profile_analysis_timeout_seconds,
-                trust_env=False,
+        if _profile_service_configured():
+            parsed = _complete_with_profile_service(
+                MANUAL_CLASSIFICATION_PROMPT,
+                content[:1000],
+                temperature=0,
             )
-            response.raise_for_status()
-            choices = response.json().get("choices") or []
-            parsed = _extract_json((choices[0].get("message") or {}).get("content") or "") if choices else None
         else:
             parsed = llm.complete_json(MANUAL_CLASSIFICATION_PROMPT, content[:1000], temperature=0)
         value = str((parsed or {}).get("memory_type") or "").strip().lower()
@@ -106,28 +139,8 @@ def extract_candidates(transcript: str, existing_memories: list[str] | None = No
     if existing_memories:
         context = "\n已有记忆（只用于去重，不要照抄无证据内容）：\n" + "\n".join(existing_memories[:20])
     user_content = (transcript[:12000] + context).strip()
-    if _profile_configured():
-        settings = get_settings()
-        payload = {
-            "model": settings.profile_analysis_model,
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": user_content}],
-            "temperature": 0.1,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-        }
-        response = httpx.post(
-            settings.profile_analysis_base_url.rstrip("/") + "/chat/completions",
-            headers={"Authorization": f"Bearer {settings.profile_analysis_api_key}", "Content-Type": "application/json"},
-            json=payload,
-            timeout=settings.profile_analysis_timeout_seconds,
-            trust_env=False,
-        )
-        response.raise_for_status()
-        choices = response.json().get("choices") or []
-        if not choices:
-            raise RuntimeError("记忆提取服务返回为空")
-        content = (choices[0].get("message") or {}).get("content") or ""
-        parsed = _extract_json(content)
+    if _profile_service_configured():
+        parsed = _complete_with_profile_service(SYSTEM_PROMPT, user_content, temperature=0.1)
     else:
         parsed = llm.complete_json(SYSTEM_PROMPT, user_content, temperature=0.1)
     if not isinstance(parsed, dict) or not isinstance(parsed.get("candidates"), list):

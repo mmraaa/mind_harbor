@@ -13,6 +13,11 @@ from app.adapters.doodle_review import (
     text_probe_status,
     validation_response_ok,
 )
+from app.adapters.profile_analysis import (
+    profile_response_usage_tokens,
+    profile_validation_payload,
+    profile_validation_response_ok,
+)
 from app.admin_module.schemas import (
     ApiServiceConfigUpdate,
     CounselorCreate,
@@ -72,6 +77,7 @@ def _student_payload(db: Session, user: User) -> dict:
     return {
         "id": user.id,
         "username": user.username,
+        "display_username": user.display_username or user.name or user.username,
         "role": user.role,
         "name": user.name,
         "risk_tags": list(control.risk_tags or []) if control else [],
@@ -189,9 +195,28 @@ def update_api_config(
     return _api_config_payload(row)
 
 
+@router.post("/api-configs/{service_id}/usage/reset")
+def reset_api_usage(service_id: str, db: Session = Depends(get_db)) -> dict:
+    """Clear one service's accumulated usage after an administrator confirms a new baseline."""
+    if service_id not in SERVICE_META:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "API 服务不存在")
+    ensure_rows(db)
+    row = db.get(ApiServiceConfig, service_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "API 服务不存在")
+    row.prompt_tokens = 0
+    row.completion_tokens = 0
+    row.total_tokens = 0
+    row.request_count = 0
+    row.failure_count = 0
+    db.commit()
+    db.refresh(row)
+    return _api_config_payload(row)
+
+
 @router.post("/api-configs/{service_id}/test")
 def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
-    """探测服务地址；画作审核发送一句固定文本并要求模型返回非空回复。"""
+    """Probe each managed service and count exactly one administrator request."""
     if service_id not in SERVICE_META:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "API 服务不存在")
     ensure_rows(db)
@@ -203,9 +228,16 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "请先配置 API Key")
     try:
         probe_url = row.base_url.rstrip("/")
-        # OpenAI 兼容服务公开 /models；画作审核必须走一次真实文本推理，
-        # 这样不会把“GET 路径可达”误报成模型可用，也不会上传图片。
-        if service_id != "doodle_review":
+        # 画像和画作审核都必须走一次真实推理，避免把 /models 可达误报为模型可用。
+        if service_id == "profile_analysis":
+            response = httpx.post(
+                probe_url + "/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=profile_validation_payload(row.model),
+                timeout=min(max(row.timeout_seconds, 1), 30),
+                trust_env=False,
+            )
+        elif service_id != "doodle_review":
             probe_url += "/models"
             response = httpx.get(
                 probe_url,
@@ -223,18 +255,24 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
                 trust_env=False,
             )
     except httpx.HTTPError:
-        return {"service_id": service_id, "status": "unreachable"}
-    if service_id == "doodle_review":
-        probe_status = text_probe_status(response)
-        prompt_tokens, completion_tokens = response_usage_tokens(response)
-        if probe_status == "reachable":
-            record_usage(
-                service_id,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
-        elif probe_status != "unreachable":
-            record_usage(service_id, failed=True)
+        record_usage(service_id, failed=True, db=db)
+        return {
+            "service_id": service_id,
+            "status": "unreachable",
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        }
+    if service_id == "profile_analysis":
+        prompt_tokens, completion_tokens = profile_response_usage_tokens(response)
+        probe_status = "verified" if profile_validation_response_ok(response) else (
+            _connection_status(response.status_code) if not 200 <= response.status_code < 300 else "invalid"
+        )
+        record_usage(
+            service_id,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            failed=probe_status != "verified",
+            db=db,
+        )
         return {
             "service_id": service_id,
             "status": probe_status,
@@ -244,9 +282,31 @@ def test_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
                 "total_tokens": prompt_tokens + completion_tokens,
             },
         }
+    if service_id == "doodle_review":
+        probe_status = text_probe_status(response)
+        prompt_tokens, completion_tokens = response_usage_tokens(response)
+        record_usage(
+            service_id,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            failed=probe_status != "reachable",
+            db=db,
+        )
+        return {
+            "service_id": service_id,
+            "status": probe_status,
+            "usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+            },
+        }
+    probe_status = _connection_status(response.status_code)
+    record_usage(service_id, failed=probe_status != "reachable", db=db)
     return {
         "service_id": service_id,
-        "status": _connection_status(response.status_code, contract_probe=service_id == "doodle_review"),
+        "status": probe_status,
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
 
 
@@ -271,19 +331,21 @@ def validate_api_config(service_id: str, db: Session = Depends(get_db)) -> dict:
             trust_env=False,
         )
     except httpx.HTTPError:
+        record_usage(service_id, failed=True, db=db)
         return {"service_id": service_id, "status": "unreachable"}
 
     if not 200 <= response.status_code < 300:
-        record_usage(service_id, failed=True)
+        record_usage(service_id, failed=True, db=db)
         return {"service_id": service_id, "status": _connection_status(response.status_code)}
     if not validation_response_ok(response):
-        record_usage(service_id, failed=True)
+        record_usage(service_id, failed=True, db=db)
         return {"service_id": service_id, "status": "invalid"}
     prompt_tokens, completion_tokens = response_usage_tokens(response)
     record_usage(
         service_id,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        db=db,
     )
     return {
         "service_id": service_id,
@@ -308,7 +370,11 @@ def list_counselors(
     )
     if keyword and keyword.strip():
         pattern = f"%{keyword.strip()}%"
-        query = query.filter(User.name.ilike(pattern) | User.username.ilike(pattern))
+        query = query.filter(
+            User.name.ilike(pattern)
+            | User.username.ilike(pattern)
+            | User.display_username.ilike(pattern)
+        )
     rows = query.order_by(User.id).all()
     return {"total": len(rows), "items": [_counselor_payload(db, user, profile) for user, profile in rows]}
 

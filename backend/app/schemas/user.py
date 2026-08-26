@@ -17,6 +17,8 @@ class UserOut(BaseModel):
     username: str
     name: str
     role: str
+    display_username: str = ""
+    gender: str = ""
 
     model_config = {"from_attributes": True}
 
@@ -32,6 +34,16 @@ class ProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=64, description="昵称 1-64 字符")
 
     model_config = {"extra": "allow"}
+
+
+class AccountUpdate(BaseModel):
+    """学生账户资料；username 是登录账号，永远不可修改。"""
+
+    username: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=64)
+    gender: str | None = Field(default=None, max_length=16)
+    display_username: str | None = Field(default=None, min_length=1, max_length=64)
+    model_config = {"extra": "forbid"}
 
 
 class PasswordChange(BaseModel):

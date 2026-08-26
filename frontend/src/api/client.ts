@@ -51,6 +51,8 @@ export type UserOut = {
   username: string
   name: string
   role: UserRole | string
+  display_username?: string
+  gender?: string
 }
 
 export type TokenResponse = {
@@ -64,6 +66,9 @@ export function getErrorMessage(err: unknown, fallback = '请求失败，请稍�
     const payload = err.response?.data as { detail?: unknown; message?: unknown; msg?: unknown; error?: unknown } | undefined
     const detail = payload?.detail ?? payload?.message ?? payload?.msg ?? payload?.error
     if (typeof detail === 'string') return detail
+    if (detail && typeof detail === 'object' && !Array.isArray(detail) && 'message' in detail) {
+      return String((detail as { message: unknown }).message)
+    }
     if (Array.isArray(detail) && detail[0] && typeof detail[0] === 'object' && 'msg' in detail[0]) {
       return String((detail[0] as { msg: unknown }).msg)
     }

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
-import { LifeBuoy, LogOut, Phone, ShieldCheck, X } from 'lucide-react'
+import { ContactRound, LifeBuoy, LogOut, Phone, ShieldCheck, X } from 'lucide-react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { LocalReminderHost } from '../LocalReminderHost'
 import { useAuthStore } from '../../stores/auth'
@@ -120,6 +120,11 @@ export function WorkspaceShell({
     navigate('/login')
   }
 
+  function onAccountClick() {
+    if (user?.role === 'student') navigate('/student/account')
+    else onLogout()
+  }
+
   return (
     <div className="app-shell">
       {showSOS && <EmergencyModal onClose={() => setShowSOS(false)} />}
@@ -131,8 +136,8 @@ export function WorkspaceShell({
             <NavigationLinks items={nav} />
           </nav>
           <div className="workspace-header__tools">
-            {user?.name && (
-              <span className="boundary-chip">{user.name}</span>
+            {(user?.display_username || user?.name) && (
+              <span className="boundary-chip">{user.display_username || user.name}</span>
             )}
             {roleNote && (
               <span className="boundary-chip">
@@ -149,10 +154,10 @@ export function WorkspaceShell({
             <button
               className="icon-button"
               type="button"
-              aria-label="退出登录"
-              onClick={onLogout}
+              aria-label={user?.role === 'student' ? '用户信息' : '退出登录'}
+              onClick={onAccountClick}
             >
-              <LogOut size={17} />
+              {user?.role === 'student' ? <ContactRound size={17} /> : <LogOut size={17} />}
             </button>
           </div>
         </div>
@@ -160,20 +165,19 @@ export function WorkspaceShell({
 
       <header className="mobile-header">
         <Brand to={brandTo} />
-        {showEmergencyHelp ? (
+        {showEmergencyHelp && (
           <button className="help-button" type="button" aria-label="紧急求助" onClick={() => setShowSOS(true)}>
             <LifeBuoy size={16} />
           </button>
-        ) : (
-          <button
-            className="icon-button"
-            type="button"
-            aria-label="退出登录"
-            onClick={onLogout}
-          >
-            <LogOut size={17} />
-          </button>
         )}
+        <button
+          className="icon-button"
+          type="button"
+          aria-label={user?.role === 'student' ? '用户信息' : '退出登录'}
+          onClick={onAccountClick}
+        >
+          {user?.role === 'student' ? <ContactRound size={17} /> : <LogOut size={17} />}
+        </button>
       </header>
 
       <main className="main-content">

@@ -181,11 +181,27 @@ def ensure_rows(db: Session) -> None:
     db.commit()
 
 
-def record_usage(service_id: str, *, prompt_tokens: int = 0, completion_tokens: int = 0, failed: bool = False) -> None:
+def record_usage(
+    service_id: str,
+    *,
+    prompt_tokens: int = 0,
+    completion_tokens: int = 0,
+    failed: bool = False,
+    db: Session | None = None,
+) -> None:
+    """Record one logical service request without escaping an injected request session.
+
+    Admin API tests receive a database session through FastAPI. Reusing it keeps
+    local test runs isolated instead of writing their mock probe results to the
+    runtime database configured by ``SessionLocal``.
+    """
+    own_session = db is None
+    session = db
     try:
-        db = SessionLocal()
+        if session is None:
+            session = SessionLocal()
         try:
-            row = db.get(ApiServiceConfig, service_id)
+            row = session.get(ApiServiceConfig, service_id)
             if row is None:
                 return
             row.prompt_tokens += max(0, prompt_tokens)
@@ -194,8 +210,9 @@ def record_usage(service_id: str, *, prompt_tokens: int = 0, completion_tokens: 
             row.request_count += 1
             if failed:
                 row.failure_count += 1
-            db.commit()
+            session.commit()
         finally:
-            db.close()
+            if own_session:
+                session.close()
     except Exception:  # noqa: BLE001 - 统计失败不应让用户请求失败
         return

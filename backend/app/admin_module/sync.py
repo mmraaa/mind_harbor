@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.admin_module.models import AccountControl
 from app.core.config import get_settings
+from app.core.schema import ensure_user_account_schema
 from app.models.resource import Resource
 from app.models.user import Counselor, User
 from app.services.api_config import resolve_service
@@ -47,6 +48,7 @@ def _with_remote(operation: Callable[[Session], None]) -> None:
     try:
         # 该表是本项目新增的运营字段,远程团队库可能尚未迁移。
         AccountControl.__table__.create(session.get_bind(), checkfirst=True)
+        ensure_user_account_schema(session.get_bind())
         operation(session)
         session.commit()
     except Exception as exc:  # noqa: BLE001
@@ -60,13 +62,27 @@ def _with_remote(operation: Callable[[Session], None]) -> None:
 def _upsert_user(session: Session, user: User) -> User:
     remote = session.get(User, user.id)
     if remote is None:
-        remote = User(id=user.id, role=user.role, username=user.username, name=user.name, password_hash=user.password_hash)
+        remote = User(
+            id=user.id,
+            role=user.role,
+            username=user.username,
+            name=user.name,
+            display_username=user.display_username,
+            gender=user.gender,
+            password_hash=user.password_hash,
+            last_username_changed_at=user.last_username_changed_at,
+            last_password_changed_at=user.last_password_changed_at,
+        )
         session.add(remote)
     else:
         remote.role = user.role
         remote.username = user.username
         remote.name = user.name
+        remote.display_username = user.display_username
+        remote.gender = user.gender
         remote.password_hash = user.password_hash
+        remote.last_username_changed_at = user.last_username_changed_at
+        remote.last_password_changed_at = user.last_password_changed_at
     session.flush()
     return remote
 

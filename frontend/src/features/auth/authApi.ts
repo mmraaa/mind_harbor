@@ -59,6 +59,7 @@ export function normalizeAuthResponse(
   const accessToken = firstString(payload.access_token, payload.accessToken, payload.token)
   if (!accessToken) throw new AuthContractError()
 
+  const displayUsername = firstString(user.display_username, user.displayName)
   return {
     access_token: accessToken,
     token_type: 'bearer',
@@ -66,6 +67,7 @@ export function normalizeAuthResponse(
       id: normalizeId(user.id ?? user.user_id ?? user.userId),
       nickname: firstString(user.nickname, user.nickName, user.name, user.display_name) ?? fallbackUsername,
       username: firstString(user.username, user.user_name, user.userName, user.account) ?? fallbackUsername,
+      ...(displayUsername ? { display_username: displayUsername } : {}),
       role: normalizeRole(user.role ?? user.user_role ?? user.userRole, fallbackRole),
     },
   }

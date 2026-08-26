@@ -4,6 +4,7 @@ export interface AuthUser {
   id: number
   nickname: string
   username: string
+  display_username?: string
   role: Role
 }
 

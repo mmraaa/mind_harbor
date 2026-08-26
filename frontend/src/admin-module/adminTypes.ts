@@ -14,6 +14,7 @@ export type Counselor = {
 export type Student = {
   id: number
   username: string
+  display_username: string
   role: 'student'
   name: string
   risk_tags: string[]

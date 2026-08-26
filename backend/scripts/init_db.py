@@ -13,6 +13,7 @@ from sqlalchemy import inspect, text
 
 import app.models  # noqa: F401  确保模型注册到 Base.metadata
 from app.core.database import Base, engine
+from app.core.schema import ensure_user_account_schema
 
 
 _MEMORY_LIFECYCLE_COLUMNS = {
@@ -26,7 +27,6 @@ _MEMORY_LIFECYCLE_COLUMNS = {
     "expires_at": "TIMESTAMP WITH TIME ZONE",
     "is_sensitive": "BOOLEAN NOT NULL DEFAULT FALSE",
 }
-
 
 def _migrate_legacy_memory_system_rows(bind) -> None:
     """把旧版以特殊记忆行保存的开关和摘要迁入专用设置表。"""
@@ -121,6 +121,8 @@ def ensure_schema_compatibility(bind) -> None:
         with bind.begin() as connection:
             for statement in statements:
                 connection.execute(text(statement))
+
+    ensure_user_account_schema(bind)
 
     if "user_memories" in tables:
         _migrate_legacy_memory_system_rows(bind)

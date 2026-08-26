@@ -32,6 +32,59 @@ def _extract_json(text: str) -> dict | None:
             return None
 
 
+def _request_payload(model: str, transcript: str) -> dict:
+    return {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": transcript[:12000]},
+        ],
+        "temperature": 0.1,
+        "stream": False,
+        "response_format": {"type": "json_object"},
+    }
+
+
+def profile_validation_payload(model: str) -> dict:
+    """A harmless input that validates the same JSON inference contract as production."""
+    return _request_payload(model, "用户：我偏好清晰、务实且有条理的交流。")
+
+
+def _response_data(response: httpx.Response) -> tuple[dict, int, int]:
+    response.raise_for_status()
+    data = response.json()
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("画像分析服务返回为空")
+    content = (choices[0].get("message") or {}).get("content") or ""
+    parsed = _extract_json(content)
+    if not parsed or not isinstance(parsed.get("observations", []), list):
+        raise ValueError("画像分析服务返回的 JSON 无效")
+    usage = data.get("usage") or {}
+    return (
+        parsed,
+        int(usage.get("prompt_tokens") or 0),
+        int(usage.get("completion_tokens") or 0),
+    )
+
+
+def profile_validation_response_ok(response: httpx.Response) -> bool:
+    try:
+        _response_data(response)
+        return True
+    except (httpx.HTTPError, TypeError, ValueError, RuntimeError):
+        return False
+
+
+def profile_response_usage_tokens(response: httpx.Response) -> tuple[int, int]:
+    try:
+        payload = response.json()
+        usage = payload.get("usage") or {}
+        return int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+    except (TypeError, ValueError, AttributeError):
+        return 0, 0
+
+
 def analyze_transcript(transcript: str) -> dict:
     primary = resolve_service("profile_analysis")
     services = [primary] + ([primary.fallback] if primary.fallback else [])
@@ -39,43 +92,24 @@ def analyze_transcript(transcript: str) -> dict:
     for service in services:
         if not service or not service.enabled or not service.api_key or not service.base_url or not service.model:
             continue
-        payload = {
-            "model": service.model,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": transcript[:12000]},
-            ],
-            "temperature": 0.1,
-            "stream": False,
-            "response_format": {"type": "json_object"},
-        }
         try:
             response = httpx.post(
                 service.base_url.rstrip("/") + "/chat/completions",
                 headers={"Authorization": f"Bearer {service.api_key}", "Content-Type": "application/json"},
-                json=payload,
+                json=_request_payload(service.model, transcript),
                 timeout=service.timeout_seconds,
                 trust_env=False,
             )
-            response.raise_for_status()
-            data = response.json()
-            choices = data.get("choices") or []
-            if not choices:
-                raise RuntimeError("画像分析服务返回为空")
-            content = (choices[0].get("message") or {}).get("content") or ""
-            parsed = _extract_json(content)
-            if not parsed or not isinstance(parsed.get("observations", []), list):
-                raise ValueError("画像分析服务返回的 JSON 无效")
-            usage = data.get("usage") or {}
+            parsed, prompt_tokens, completion_tokens = _response_data(response)
             record_usage(
                 primary.service_id,
-                prompt_tokens=int(usage.get("prompt_tokens") or 0),
-                completion_tokens=int(usage.get("completion_tokens") or 0),
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
             )
             return parsed
         except Exception as exc:  # noqa: BLE001 - 主服务失败时按管理配置尝试备用服务
             last_error = exc
-            record_usage(primary.service_id, failed=True)
     if last_error is not None:
+        record_usage(primary.service_id, failed=True)
         raise last_error
     raise RuntimeError("画像分析服务未配置")

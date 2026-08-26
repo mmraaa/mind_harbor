@@ -2,12 +2,14 @@ import { create } from 'zustand'
 import { fetchMe, login as apiLogin, register as apiRegister } from '../api/auth'
 import { getStoredToken, setStoredToken, type UserOut, type UserRole } from '../api/client'
 import { resetReminderHydration } from '../lib/localReminders'
+import axios from 'axios'
 
 type AuthState = {
   token: string | null
   user: UserOut | null
   loading: boolean
   bootstrapped: boolean
+  bootstrapError: string | null
   bootstrap: () => Promise<void>
   login: (username: string, password: string) => Promise<UserOut>
   register: (username: string, password: string, name?: string) => Promise<UserOut>
@@ -21,24 +23,36 @@ export function roleHome(role: string): string {
   return '/student'
 }
 
+/** Only an explicit API 401 proves that the stored token is invalid. */
+export function isSessionInvalidError(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.status === 401
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   token: getStoredToken(),
   user: null,
   loading: false,
   bootstrapped: false,
+  bootstrapError: null,
 
   bootstrap: async () => {
     const token = getStoredToken()
     if (!token) {
-      set({ token: null, user: null, bootstrapped: true })
+      set({ token: null, user: null, bootstrapError: null, bootstrapped: true })
       return
     }
     try {
       const user = await fetchMe()
-      set({ token, user, bootstrapped: true })
-    } catch {
-      setStoredToken(null)
-      set({ token: null, user: null, bootstrapped: true })
+      set({ token, user, bootstrapError: null, bootstrapped: true })
+    } catch (error) {
+      if (isSessionInvalidError(error)) {
+        setStoredToken(null)
+        set({ token: null, user: null, bootstrapError: null, bootstrapped: true })
+        return
+      }
+      // Keep the token during transient database/network failures. The user
+      // can retry without being silently logged out.
+      set({ token, user: null, bootstrapError: '暂时无法确认登录状态，请检查数据库连接后重试。', bootstrapped: true })
     }
   },
 
