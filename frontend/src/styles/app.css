@@ -1628,13 +1628,15 @@ a.tool-card__breathing-cta {
 }
 
 .composer {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: end;
 }
 
 .composer .text-area {
+  flex: 1 1 12rem;
+  min-width: 0;
   min-height: 56px;
   max-height: min(168px, 30vh);
   border-radius: 16px;
@@ -1649,8 +1651,13 @@ a.tool-card__breathing-cta {
 }
 
 .composer-mic {
+  flex: 0 0 auto;
   min-width: 44px;
   padding: 0 12px;
+}
+
+.composer .primary-button {
+  flex: 0 0 auto;
 }
 
 .voice-reply-hint {
@@ -1664,12 +1671,8 @@ a.tool-card__breathing-cta {
 }
 
 @media (max-width: 720px) {
-  .composer {
-    grid-template-columns: auto 1fr;
-  }
-
   .composer .primary-button {
-    grid-column: 1 / -1;
+    flex: 1 1 100%;
   }
 }
 
