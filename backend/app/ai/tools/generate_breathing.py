@@ -14,17 +14,7 @@ BREATHING_EXERCISES: dict[str, dict] = {
             "用嘴缓缓呼气,默数 8 秒",
             "重复 4 组,感受身体的放松",
         ],
-    },
-    "box": {
-        "name": "盒式呼吸",
-        "steps": [
-            "坐直或将背靠在椅背上，闭上眼睛",
-            "用鼻子吸气，默数 4 秒",
-            "屏住呼吸，默数 4 秒",
-            "用嘴缓缓呼气，默数 4 秒",
-            "再屏息 4 秒，形成方形节奏；重复几轮",
-        ],
-    },
+    }
 }
 DEFAULT_EXERCISE = "478"
 
@@ -51,7 +41,7 @@ registry.register(
             "properties": {
                 "exercise": {
                     "type": "string",
-                    "enum": ["478", "box"],
+                    "enum": ["478"],
                     "description": "呼吸练习类型,缺省 478",
                 }
             },

@@ -9,7 +9,7 @@
 
 import re
 from dataclasses import dataclass
-
+import jieba 
 from sqlalchemy.orm import Session
 
 from app.adapters import embedding
@@ -33,12 +33,48 @@ class ChunkHit:
 
 
 def _extract_keywords(text: str, limit: int = 4) -> list[str]:
-    """从查询提取检索关键词:连续 CJK(≥2 字)或英文词(≥3 字母)。"""
-    return re.findall(r"[一-鿿]{2,}|[A-Za-z]{3,}", text or "")[:limit]
+    """使用 jieba 分词后，提取检索关键词。
+    过滤标准：中文 ≥ 2 字，英文 ≥ 3 字母
+    """
+    if not text:
+        return []
+        
+    # 1. 使用 jieba 精确模式分词
+    raw_words = jieba.lcut(text)
+    
+    keywords = []
+    for word in raw_words:
+        # 去除两端空格
+        word = word.strip()
+        
+        # 2. 判断是否符合过滤标准：
+        # 如果是纯汉字且长度>=2，或者纯英文且长度>=3
+        if re.match(r"^[一-鿿]{2,}$", word) or re.match(r"^[A-Za-z]{3,}$", word):
+            keywords.append(word)
+            
+        # 3. 达到限制数量则提前结束
+        if len(keywords) == limit:
+            break
+            
+    return keywords
 
 
 def _rrf_merge(vector_hits: list[dict], kw_chunk_ids: list[int], k: int = RRF_K) -> list[tuple[int, float]]:
-    """Reciprocal Rank Fusion:融合两路命中的 id 排序(降序)。关键词加权。"""
+    """Reciprocal Rank Fusion:融合两路命中的 id 排序(降序)。关键词加权。
+
+    Args:
+        vector_hits: Milvus 向量路命中(list[dict],按相似度降序,每项含 `id`)。
+        kw_chunk_ids: 关键词路命中的 chunk id 列表(已去重,保持首次出现顺序)。
+        k: RRF 平滑常数(默认 60):单路贡献 `1/(k + rank)`,k 越大排名差异越平滑。
+
+    Returns:
+        list[(chunk_id, rrf_score)]:按 rrf 分数降序(同分按 chunk_id 升序保证稳定)。
+
+    为什么用 RRF 且关键词加权:
+        向量相似度与 ILIKE 命中是两个不可直接比较的打分体系;RRF 只依赖「排名」,
+        天然可比。KEYWORD_WEIGHT=1.5 是因为字面精确命中比"像但不确定"的向量
+        相似更可信,故提高其在融合中的贡献。
+    """
     score: dict[int, float] = {}
     for rank, hit in enumerate(vector_hits, start=1):
         score[hit["id"]] = score.get(hit["id"], 0.0) + 1.0 / (k + rank)
@@ -108,6 +144,7 @@ def search(
             if row is None or row.is_parent:
                 continue  # Milvus 有而 PG 无(脏数据)或误命中父块,跳过
             seen_rows.add(cid)
+            # Small-to-Big:命中子块后回取父块整节文本作 LLM 上下文(父块本身不向量化)
             parent = session.get(KnowledgeChunk, row.parent_id) if row.parent_id else None
             context = parent.content if parent else row.content
             doc = session.get(KnowledgeDoc, row.doc_id)

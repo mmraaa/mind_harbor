@@ -45,13 +45,24 @@ FACT_PATTERNS = [
 def _emotion_profile(db: Session, user_id: int, recent_n: int = EMOTION_PROFILE_N) -> list[str]:
     """从情绪日志(journals/emotions)聚合长期情绪画像:主情绪、趋势、常驻压力源。
 
-    依据情绪日志(设计 2026-08-15):近 N 条情绪记录动态聚合,不冗余存储。
+    Args:
+        db: 数据库会话。
+        user_id: 目标用户。
+        recent_n: 取最近 N 条情绪记录参与聚合(默认 20)。
+
+    Returns:
+        list[str]: 画像描述行(如「近期情绪:以 anxious 为主(6/20 条),平均强度 6.5」);
+                   无情绪记录时返回空列表。
+
+    说明:
+        - 画像由情绪日志**动态聚合**,不冗余存储 → 数据自动最新、口径与咨询师端一致;
+        - 只把"Evidence 充足"的模式化为描述(压力源 ≥2 次等),避免噪音干扰上下文。
     """
     emotions = (
         db.query(Emotion)
         .filter(Emotion.user_id == user_id)
         .order_by(Emotion.id.desc())
-        .limit(recent_n * 2)
+        .limit(recent_n * 2)  # 多取一些,供"近半 vs 更早半"对比时够用
         .all()
     )
     if not emotions:
@@ -59,11 +70,13 @@ def _emotion_profile(db: Session, user_id: int, recent_n: int = EMOTION_PROFILE_
     recent = emotions[:recent_n]
     lines: list[str] = []
 
+    # 主情绪:出现次数最多的类别 + 平均强度(跨记录)
     top_cat, cnt = Counter(e.category for e in recent).most_common(1)[0]
     avg = round(sum(e.intensity for e in recent) / len(recent), 1)
     lines.append(f"近期情绪:以「{top_cat}」为主({cnt}/{len(recent)} 条),平均强度 {avg}")
 
-    # 情绪趋势:近半 vs 更早半 强度对比(≥4 条且差异明显才提示)
+    # 情绪趋势:把近期记录对半切开(近半 vs 更早半),比较强度均值;
+    # 需 ≥4 条且均值差 ≥1 才提示,避免把随机波动当成趋势
     if len(recent) >= 4:
         half = len(recent) // 2
         older, newer = recent[half:], recent[:half]
@@ -74,7 +87,7 @@ def _emotion_profile(db: Session, user_id: int, recent_n: int = EMOTION_PROFILE_
             trend = "情绪强度上升,压力在累积" if diff > 0 else "情绪强度下降,正在好转"
             lines.append(f"情绪趋势:{trend}(近 {len(newer)} 条均值 {n_avg:.1f} vs 更早 {o_avg:.1f})")
 
-    # 常驻压力源 / 支持需求(出现 ≥2 次)
+    # 常驻压力源 / 支持需求:出现 ≥2 次才认为"是持续的困扰/诉求",防止偶发词污染画像
     src = Counter(e.stress_source for e in recent if e.stress_source)
     top_src = [s for s, c in src.most_common(SETTLE_STRESS_TOP) if c >= 2]
     if top_src:
@@ -103,7 +116,23 @@ def assemble_context(
     db: Session,
     rag_hits: list | None = None,
 ) -> str:
-    """拼装对话上下文(供 system 提示词):长期画像 + 会话摘要 + 短期窗口 + 知识参考。"""
+    """拼装对话上下文(供 system 提示词):长期画像 + 会话摘要 + 短期窗口 + 知识参考。
+
+    Args:
+        session: 当前会话(读取摘要/风险状态)。
+        messages: 该会话全部消息,按时间正序。
+        user_id: 当前用户(用于聚合长期画像)。
+        db: 数据库会话。
+        rag_hits: 可选 RAG 命中(ChunkHit 列表),注入「知识参考」。
+
+    Returns:
+        拼装好的多段提示词文本,各段用空行分隔;无可用内容时返回空串。
+
+    拼装顺序(重要→次要→当前):
+        【长期记忆】→【会话摘要】→【近期对话】→【知识参考】
+    理由:先让模型建立"这个人是谁、长期状态如何",再带当前窗口与检索依据,
+    避免近期信息淹没长期画像,也避免知识引用喧宾夺主。
+    """
     parts = []
     current_text = next((message.content for message in reversed(messages) if message.role == "user"), None)
     profile = _long_term_profile(db, user_id, current_text)
@@ -112,6 +141,7 @@ def assemble_context(
     if session.summary:
         parts.append("【会话摘要】\n" + session.summary)
     recent = messages[-SHORT_TERM_WINDOW:]
+
     if recent:
         parts.append("【近期对话】\n" + "\n".join(f"{m.role}: {m.content}" for m in recent))
     if rag_hits:
@@ -126,7 +156,16 @@ def update(session: ChatSession, messages: list[Message], user_id: int, db: Sess
     1. 短期上下文记忆 —— 滚动会话摘要:每积累 SUMMARY_THRESHOLD 轮,用 LLM 增量压缩
        「旧摘要 + 新增对话」(已有摘要时),无摘要则生成首版;
     2. 规则抽取事实沉淀到 UserMemory(fact, 去重, 不调 LLM)。
+
+    Args:
+        session: 当前会话(摘要字段就地更新并落库)。
+        messages: 会话消息(用于阈值判断与事实抽取)。
+        user_id: 当前用户(事实归属)。
+        db: 数据库会话。
     """
+    # 滚动摘要时机:消息数到达阈值且(尚无摘要 / 本轮恰为阈值整数倍)。
+    # 首版在首次到达阈值时生成;之后每满一个阈值,用「旧摘要 + 新增窗口」增量合并,
+    # 避免整段历史反复重压缩 → 成本恒定(O(窗口))且不丢失早期要点。
     if len(messages) >= SUMMARY_THRESHOLD and (not session.summary or len(messages) % SUMMARY_THRESHOLD == 0):
         # 首次达到阈值即生成首版;之后每满阈值用「旧摘要 + 新增」增量滚动
         recent_part = "\n".join(f"{m.role}: {m.content}" for m in messages[-SUMMARY_THRESHOLD:])
@@ -139,6 +178,8 @@ def update(session: ChatSession, messages: list[Message], user_id: int, db: Sess
             session.summary = llm.complete_text(SUMMARY_SYSTEM_PROMPT, recent_part)
         db.add(session)
 
+    # 规则抽取:名字/年级专业等高度结构化的短事实,用正则零成本固化(不调 LLM)。
+    # 每条消息只沉淀一条事实、按 content 去重,避免重复写入。
     for msg in messages[-SHORT_TERM_WINDOW:]:
         if msg.role != "user":
             continue
@@ -156,8 +197,16 @@ def update(session: ChatSession, messages: list[Message], user_id: int, db: Sess
 def settle_long_term_memory(db: Session, user_id: int) -> None:
     """会话结束时沉淀长期记忆(依据情绪日志):稳定压力源模式 → UserMemory(profile)。
 
-    当同一压力源在情绪记录中出现 >= SETTLE_STRESS_MIN 次,沉淀一条长期画像记忆
-    (跨会话持续使用);已存在则更新 importance 与 updated_at。
+    Args:
+        db: 数据库会话。
+        user_id: 目标用户。
+
+    说明:
+        - 只有"稳定模式"(同一压力源在情绪记录中出现 >= SETTLE_STRESS_MIN 次)
+          才沉淀,避免把某一两次的偶发困扰固化进长期画像;
+        - 已存在的同一画像仅提升 importance(权重),不重复写入;
+        - 对应隐私约束:心理/敏感内容入长期记忆前已经由情绪闭环做过标记,
+          本函数只沉淀结构化的压力源描述,不放对话原句。
     """
     emotions = db.query(Emotion).filter(Emotion.user_id == user_id).all()
     src = Counter(e.stress_source for e in emotions if e.stress_source)

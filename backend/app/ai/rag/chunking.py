@@ -17,9 +17,9 @@ DEFAULT_OVERLAP = 50
 class SemanticChunk:
     """一个可向量化的子块。"""
 
-    content: str
+    content: str            # 子块(向量化用),带 [文档 > 节] 前缀
     section: str
-    parent_content: str
+    parent_content: str     # 父块(整节全文,仅供 LLM 回查,不向量化)
     seq: int
 
 
@@ -55,7 +55,7 @@ def chunk_document(text: str, max_chars: int = DEFAULT_MAX_CHARS, overlap: int =
     if not text or not text.strip():
         return []
 
-    doc_title, sections = _parse_h2_sections(text)
+    doc_title, sections = _parse_h2_sections(text)          # `##` 为节边界;`#` 为文档标题
     if not sections:
         body = _body_without_h1(text)
         if not body:
@@ -65,12 +65,12 @@ def chunk_document(text: str, max_chars: int = DEFAULT_MAX_CHARS, overlap: int =
 
     result: list[SemanticChunk] = []
     for section_title, body_lines in sections:
-        parent_content = "\n".join(body_lines).strip()
+        parent_content = "\n".join(body_lines).strip()       # 父块:整节文本
         if not parent_content:
             continue
         path = " > ".join(filter(None, [doc_title, section_title]))
-        full = f"[{path}]\n{parent_content}"
-        if len(full) > max_chars:
+        full = f"[{path}]\n{parent_content}"                # 子块:带层级前缀
+        if len(full) > max_chars:                           # 超长节再按窗口切
             for piece in _window_split(full, max_chars, overlap):
                 result.append(
                     SemanticChunk(content=piece, section=section_title, parent_content=parent_content, seq=len(result))

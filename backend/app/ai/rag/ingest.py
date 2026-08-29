@@ -81,10 +81,12 @@ def ingest_document(path: str | Path, db: Session | None = None, store: MilvusSt
     """
     p = Path(path)
     text = p.read_text(encoding="utf-8")
+    # ① 语义分块:父块(整节文本,不进向量库)+ 子块(带 [文档>节] 前缀)
     chunks = chunk_document(text)
     if not chunks:
         return 0
 
+    # ② 只向量化子块;父块全文仅落 PostgreSQL,供检索命中后回查作 LLM 上下文
     vectors = embedding.embed([c.content for c in chunks])
 
     own_db = db is None

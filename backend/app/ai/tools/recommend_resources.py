@@ -39,7 +39,7 @@ registry.register(
         parameters={
             "type": "object",
             "properties": {
-                "need": {"type": "string", "description": "需求关键词,如 书籍, 文章, 游戏, 求助渠道"}
+                "need": {"type": "string", "description": "需求关键词,如 推荐, 书籍, 文章, 游戏, 求助渠道"}
             },
             "required": [],
         },

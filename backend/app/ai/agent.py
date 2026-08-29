@@ -35,13 +35,11 @@ TOOL_SYSTEM_PROMPT = (
     "规则:"
     "1. 当用户询问心理常识、校园咨询流程、压力应对、自助练习、求助渠道等知识类问题时,"
     "   **必须调用 search_knowledge 工具检索知识库**,不得跳过、不得凭记忆编造作答;"
-    "2. 用户提及书籍/文章/游戏/求助渠道等资源需求,或可能受益于心理资源时,"
+    "2. 用户提及书籍/文章/游戏/求助渠道等推荐资源需求,或可能受益于心理资源时,"
     "   **主动调用 recommend_resources** 推荐资源卡片;"
-    "3. 用户感到孤单/难过、希望被安抚,或回复内容适合用声音陪伴时, (推荐多使用)"
-    "   **调用 speak_voice** 把一段安抚/鼓励的话合成为语音推给前端(可与其他工具组合);"
     "4. 调用 search_knowledge 时,query 参数请提炼为简短的核心检索词(如'心理咨询 预约'、'考试焦虑 缓解'),不要传整段口语;"
     "5. **可在一次对话中依次/同时调用多个工具**(例如:先 search_knowledge 获取知识引用,"
-    "   再用 speak_voice 将安抚语生成语音;或 recommend_resources + speak_voice 组合);"
+    "    再 ecommend_resources);"
     "   工具结果会返回给你,请据实使用,不要编造工具没有给出的内容。"
 )
 
@@ -49,7 +47,17 @@ TOOL_SYSTEM_PROMPT = (
 def _dispatch(
     db: Session, user_id: int, session_id: int | None, name: str, arguments: str, registry=None
 ) -> dict:
-    """执行单个工具调用;未知工具/参数解析失败返回错误结果而非崩溃。"""
+    """执行单个工具调用;未知工具/参数解析失败返回错误结果而非崩溃。
+
+    Args:
+        db/user_id/session_id: 工具 handler 的标准入参(鉴权后由上层传入)。
+        name: 模型选择的工具名。
+        arguments: 模型传来的 JSON 字符串参数(可能非法/为空)。
+        registry: 工具注册表;缺省用学生端共享 registry。
+
+    Returns:
+        dict: 工具结果(会作为 tool 消息回填模型)或 {error: ...}。
+    """
     reg = registry or tools_registry.registry
     try:
         spec = reg.get(name)
