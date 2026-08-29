@@ -25,9 +25,16 @@ SQL_SCHEMA_HINT = (
     "可用表结构与列名(必须使用这些确切列名,不要臆造):\n"
     "- emotions(id, user_id, journal_id, session_id, category, intensity, stress_source, support_need, created_at)\n"
     "- journals(id, user_id, session_id, summary, content, mood_score, created_at)\n"
-    "- sessions(id, user_id, title, summary, started_at, risk_level, status)\n"
-    "- users(id, role, username, name, created_at)\n"
-    "emotions.category 取值: anxious/sad/angry/lonely/tired/calm/hopeful。"
+    "- sessions(id, user_id, title, summary, started_at, risk_level, status, hidden_from_student_at)\n"
+    "- users(id, role, name, gender, created_at)\n"
+    "emotions.category 取值: anxious/sad/angry/lonely/tired/calm/hopeful。\n"
+    "书写规则(务必遵守):\n"
+    "1. 只 SELECT 上面列出的列,不要引用未列出或臆造的列;\n"
+    "2. 多表 JOIN 时所有列必须带表别名(如 s.title、j.summary、u.name);\n"
+    "3. 联表做计数/比率统计时,必须用 COUNT(DISTINCT 表别名.主键) 去重(如 COUNT(DISTINCT s.id)),"
+    "避免 LEFT JOIN 造成计数虚高;无 GROUP BY 时 SELECT 列表只允许聚合函数;\n"
+    "4. 日期范围统一用 `列 >= CURRENT_DATE - INTERVAL 'N days'` 形式,不要写具体日期字面量;\n"
+    "5. 只输出可执行的 SELECT;禁止出现多语句、注释或分号。"
 )
 
 SQL_GEN_PROMPT = (

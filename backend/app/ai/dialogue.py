@@ -180,8 +180,7 @@ def chat_stream(
             yield from _finish_session(db, user, session)
         return
 
-    # 3) 记忆拼装(RAG 检索交由 Agent 按需调用 search_knowledge 工具,见 step 3.5;
-    #    不再每轮自动检索,避免与工具重复、节省 embedding 调用)
+    # 3) 记忆拼装
     msgs = _load_messages(db, session.id)
     context = memory.assemble_context(session, msgs, user.id, db)
 
