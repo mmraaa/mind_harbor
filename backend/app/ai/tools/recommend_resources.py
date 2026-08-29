@@ -10,7 +10,7 @@ def _resources(db: Session, user_id: int, session_id: int, need: str | None = No
     q = db.query(Resource).filter_by(is_active=True)
     if need and need.strip():
         pattern = f"%{need.strip()}%"
-        q = q.filter(Resource.title.ilike(pattern) | Resource.content.ilike(pattern))
+        q = q.filter(Resource.type.ilike(pattern) | Resource.content.ilike(pattern))
     rows = q.order_by(Resource.id).limit(5).all()
     return {
         "type": "resources",
